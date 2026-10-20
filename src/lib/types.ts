@@ -75,6 +75,12 @@ export interface Prescription {
   validUntil: string;
   diagnosis: string;
   items: PrescriptionItem[];
+  /** Patient-uploaded copy of a paper prescription (no doctorId). */
+  uploaded?: boolean;
+  /** Name of the file the patient attached (the file itself is not stored). */
+  fileName?: string;
+  /** Free-text doctor name on an uploaded prescription. */
+  doctorName?: string;
 }
 
 export type OrderStatus = "placed" | "confirmed" | "packed" | "delivered" | "cancelled" | "pre-order";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { CheckCircle2, Minus, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -9,17 +9,22 @@ import { CautionPanel } from "@/components/caution/caution-panel";
 import { RxBadge } from "@/components/shared/status-badge";
 import { formatBDT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type { CautionReport } from "@/lib/types";
+import type { CautionReport, Order, Prescription } from "@/lib/types";
+import { subscribeStore } from "@/lib/auth-store";
+import { addOrders, getDataSnapshot, parseOverlay, prescribedMedicineIds, today } from "@/lib/dashboard-store";
+import { useAuth } from "@/components/auth/auth-provider";
 import { useCart } from "./cart-provider";
 
-interface Props {
-  /** null → visitor not logged in as a patient. */
-  patientName: string | null;
-  /** Medicine ids covered by the patient's valid prescriptions. */
-  prescribedIds: string[];
-}
-
-export function CartView({ patientName, prescribedIds }: Props) {
+/** Prescriptions covering this patient: seed ones from the server + ones saved in the browser. */
+export function CartView({ seedPrescriptions }: { seedPrescriptions: Prescription[] }) {
+  const { user } = useAuth();
+  const patient = user?.role === "patient" ? user : null;
+  const patientName = patient?.name ?? null;
+  const rawData = useSyncExternalStore(subscribeStore, getDataSnapshot, () => null);
+  const prescribedIds = useMemo(
+    () => (patient ? prescribedMedicineIds([...parseOverlay(rawData).prescriptions, ...seedPrescriptions], patient.id) : []),
+    [patient, rawData, seedPrescriptions],
+  );
   const { lines, total, setQuantity, remove, clear } = useCart();
   const [report, setReport] = useState<CautionReport | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -41,22 +46,26 @@ export function CartView({ patientName, prescribedIds }: Props) {
 
   const blocked = lines.filter((l) => l.rx && !prescribedIds.includes(l.medicineId));
 
-  async function checkout() {
-    setPlacing(true);
+  /** One order per pharmacy, saved in the browser. Rx-only items need a valid prescription on file. */
+  function checkout() {
+    if (!patient) return;
     setError(null);
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines: lines.map(({ medicineId, pharmacyId, quantity }) => ({ medicineId, pharmacyId, quantity })) }),
-    });
-    const json = await res.json();
+    if (blocked.length > 0) return setError("A valid prescription is required for Rx-only medicines.");
+    setPlacing(true);
+    const stamp = Date.now().toString(36).toUpperCase();
+    const orders: Order[] = [...Map.groupBy(lines, (l) => l.pharmacyId)].map(([pharmacyId, group], i) => ({
+      id: `ORD-${stamp}${i + 1}`,
+      patientId: patient.id,
+      pharmacyId,
+      lines: group.map((l) => ({ medicineId: l.medicineId, quantity: l.quantity, unitPrice: l.unitPrice })),
+      total: group.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0),
+      status: "placed",
+      createdAt: today(),
+    }));
+    addOrders(orders);
+    setPlaced(orders.map((o) => o.id));
+    clear();
     setPlacing(false);
-    if (json.ok) {
-      setPlaced(json.orders.map((o: { id: string }) => o.id));
-      clear();
-    } else {
-      setError(json.error ?? "Could not place order.");
-    }
   }
 
   if (placed) {
@@ -122,7 +131,7 @@ export function CartView({ patientName, prescribedIds }: Props) {
           <p className="text-xs text-muted-foreground">Payment: cash on delivery.</p>
 
           {!patientName ? (
-            <Link href="/login?role=patient" className={cn(buttonVariants(), "w-full")}>Log in as patient to order</Link>
+            <Link href="/login" className={cn(buttonVariants(), "w-full")}>Log in as patient to order</Link>
           ) : (
             <>
               <p className="text-muted-foreground">Ordering as <b>{patientName}</b></p>

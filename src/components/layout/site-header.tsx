@@ -1,12 +1,9 @@
 import Link from "next/link";
 import { Pill } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
 import { CartLink } from "@/components/cart/cart-link";
+import { HeaderAuth } from "@/components/layout/header-auth";
 import { MobileNav } from "@/components/layout/mobile-nav";
-import { APP_NAME, CONTAINER, ROLE_HOME } from "@/lib/constants";
-import { getSession } from "@/lib/auth";
-import { logout } from "@/lib/actions/auth";
-import { Button } from "@/components/ui/button";
+import { APP_NAME, CONTAINER } from "@/lib/constants";
 
 const links = [
   { href: "/medicines", label: "Medicines" },
@@ -14,8 +11,7 @@ const links = [
   { href: "/how-it-works", label: "How it works" },
 ];
 
-export async function SiteHeader() {
-  const user = await getSession();
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
       <div className={`${CONTAINER} flex h-16 items-center gap-6`}>
@@ -31,14 +27,7 @@ export async function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <MobileNav links={links} />
           <CartLink />
-          {user ? (
-            <>
-              <Link href={ROLE_HOME[user.role]} className={buttonVariants({ size: "sm" })}>{user.name.split(" ")[0]}&apos;s dashboard</Link>
-              <form action={logout}><Button size="sm" variant="ghost">Log out</Button></form>
-            </>
-          ) : (
-            <Link href="/login" className={buttonVariants({ size: "sm" })}>Log in</Link>
-          )}
+          <HeaderAuth />
         </div>
       </div>
     </header>

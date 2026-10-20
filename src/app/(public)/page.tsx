@@ -46,7 +46,6 @@ const categoryIcons: Record<string, LucideIcon> = {
 const audiences = [
   { icon: User, label: "Patients", text: "Find medicine, understand it, and get it delivered.", points: ["Search nationwide stock", "See cautions before you pay", "Keep every prescription in one place"], href: "/login?role=patient", cta: "Continue as patient" },
   { icon: Stethoscope, label: "Doctors", text: "Prescribe digitally and link it to purchases.", points: ["Searchable medicine database", "Prescriptions with validity dates", "Full issued history"], href: "/login?role=doctor", cta: "Continue as doctor" },
-  { icon: Store, label: "Pharmacists", text: "Reach patients who can't find stock elsewhere.", points: ["Manage stock and prices", "Confirm, pack and deliver orders", "Rare-medicine visibility"], href: "/login?role=pharmacist", cta: "Continue as pharmacist" },
 ];
 
 const faqs = [

@@ -1,20 +1,6 @@
-import { FilePlus, FileText, LayoutDashboard } from "lucide-react";
-import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { requireRole } from "@/lib/auth";
+import { RoleDashboard } from "@/components/dashboard/role-dashboard";
+import { getDashboardSeed } from "@/lib/services/seed.service";
 
-export default async function DoctorLayout({ children }: LayoutProps<"/doctor">) {
-  const user = await requireRole("doctor");
-  return (
-    <DashboardShell
-      roleLabel="Doctor"
-      userName={user.name}
-      nav={[
-        { href: "/doctor", label: "Overview", icon: LayoutDashboard },
-        { href: "/doctor/prescriptions", label: "Prescription history", icon: FileText },
-        { href: "/doctor/prescriptions/new", label: "New prescription", icon: FilePlus },
-      ]}
-    >
-      {children}
-    </DashboardShell>
-  );
+export default function DoctorLayout({ children }: LayoutProps<"/doctor">) {
+  return <RoleDashboard role="doctor" seed={getDashboardSeed()}>{children}</RoleDashboard>;
 }

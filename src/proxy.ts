@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 /**
- * Admin panel (/admin, /api/admin) is reachable from localhost only.
- * Any other host header gets a 404 so the panel looks non-existent.
+ * The admin stats API (/api/admin) is reachable from localhost only.
+ * The /admin pages are protected by their own login instead.
  */
 export function proxy(req: NextRequest) {
   const hostname = req.headers.get("host")?.replace(/:\d+$/, "") ?? "";
@@ -15,5 +15,5 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/api/admin/:path*"],
 };

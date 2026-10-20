@@ -16,8 +16,8 @@ const columns = [
     title: "For professionals",
     links: [
       { href: "/login?role=doctor", label: "Doctor access" },
-      { href: "/login?role=pharmacist", label: "Pharmacy access" },
       { href: "/login?role=patient", label: "Patient access" },
+      { href: "/signup", label: "Create an account" },
     ],
   },
   {

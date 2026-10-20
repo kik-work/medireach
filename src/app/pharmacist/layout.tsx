@@ -1,20 +1,7 @@
-import { LayoutDashboard, Package, Pill } from "lucide-react";
-import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { requireRole } from "@/lib/auth";
+import { notFound } from "next/navigation";
 
-export default async function PharmacistLayout({ children }: LayoutProps<"/pharmacist">) {
-  const user = await requireRole("pharmacist");
-  return (
-    <DashboardShell
-      roleLabel="Pharmacist"
-      userName={user.name}
-      nav={[
-        { href: "/pharmacist", label: "Overview", icon: LayoutDashboard },
-        { href: "/pharmacist/inventory", label: "Inventory", icon: Pill },
-        { href: "/pharmacist/orders", label: "Orders", icon: Package },
-      ]}
-    >
-      {children}
-    </DashboardShell>
-  );
+// Pharmacist accounts are not part of the new local auth (patient / doctor / admin only).
+// Pages below this layout are unreachable until a pharmacist flow is added.
+export default function PharmacistLayout(_props: LayoutProps<"/pharmacist">) {
+  notFound();
 }
