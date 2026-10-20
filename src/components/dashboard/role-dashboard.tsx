@@ -3,16 +3,16 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FilePlus, FileText, LayoutDashboard, Package, Pill, Search, ShieldCheck, ShoppingCart, Sparkles, Store,
+  FilePlus, FileText, LayoutDashboard, Package, Pill, Repeat, Search, ShieldCheck, ShoppingCart, Sparkles, Store, Warehouse,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AdminLogin } from "@/components/auth/admin-login";
 import { DashboardDataProvider } from "@/components/dashboard/data-provider";
 import { DashboardShell, type NavItem } from "@/components/layout/dashboard-shell";
-import { AUTH_HOME, type AuthRole } from "@/lib/auth-store";
-import type { DashboardSeed } from "@/lib/services/seed.service";
+import { ROLE_HOME } from "@/lib/constants";
+import type { Role } from "@/lib/types";
 
-const NAV: Record<AuthRole, { label: string; items: NavItem[] }> = {
+const NAV: Record<Role, { label: string; items: NavItem[] }> = {
   patient: {
     label: "Patient",
     items: [
@@ -22,6 +22,7 @@ const NAV: Record<AuthRole, { label: string; items: NavItem[] }> = {
       { href: "/patient/prescriptions", label: "My prescriptions", icon: FileText },
       { href: "/cart", label: "Cart", icon: ShoppingCart },
       { href: "/patient/orders", label: "My orders", icon: Package },
+      { href: "/patient/refills", label: "Refills", icon: Repeat },
     ],
   },
   doctor: {
@@ -31,6 +32,15 @@ const NAV: Record<AuthRole, { label: string; items: NavItem[] }> = {
       { href: "/doctor/prescriptions/new", label: "New prescription", icon: FilePlus },
       { href: "/doctor/prescriptions", label: "Prescription history", icon: FileText },
       { href: "/medicines", label: "Medicine catalogue", icon: Pill },
+    ],
+  },
+  pharmacist: {
+    label: "Pharmacist",
+    items: [
+      { href: "/pharmacist", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/pharmacist/inventory", label: "Inventory", icon: Warehouse },
+      { href: "/pharmacist/orders", label: "Orders", icon: Package },
+      { href: "/pharmacist/pharmacy", label: "My pharmacy", icon: Store },
     ],
   },
   admin: {
@@ -57,12 +67,12 @@ function Splash() {
  * Client-side guard + shell for a role dashboard.
  * Wrong role or no session: patient/doctor go to /login; /admin shows its own login form.
  */
-export function RoleDashboard({ role, seed, children }: { role: AuthRole; seed: DashboardSeed; children: React.ReactNode }) {
+export function RoleDashboard({ role, children }: { role: Role; children: React.ReactNode }) {
   const router = useRouter();
   const { user, ready } = useAuth();
   const allowed = ready && user?.role === role;
   // Non-admin routes bounce away; the admin route shows its login form in place.
-  const redirectTo = !ready || allowed ? null : user ? AUTH_HOME[user.role] : role === "admin" ? null : "/login";
+  const redirectTo = !ready || allowed ? null : user ? ROLE_HOME[user.role] : role === "admin" ? null : "/login";
 
   useEffect(() => {
     if (redirectTo) router.replace(redirectTo);
@@ -71,7 +81,7 @@ export function RoleDashboard({ role, seed, children }: { role: AuthRole; seed: 
   if (!ready) return <Splash />;
   if (allowed && user) {
     return (
-      <DashboardDataProvider seed={seed}>
+      <DashboardDataProvider>
         <DashboardShell roleLabel={NAV[role].label} user={user} nav={NAV[role].items}>{children}</DashboardShell>
       </DashboardDataProvider>
     );

@@ -8,17 +8,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { APP_NAME } from "@/lib/constants";
-import { login } from "@/lib/auth-store";
+import { useAuth } from "@/components/auth/auth-provider";
 
 /** Shown by /admin when nobody is signed in. Accepts admin accounts only. */
 export function AdminLogin() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const { login } = useAuth();
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const result = login(identifier, password, "admin");
+    setError(null);
+    const result = await login(identifier, password, "admin");
     if (!result.ok) setError(result.error);
     // On success the session store updates and RoleDashboard swaps in the dashboard.
   }

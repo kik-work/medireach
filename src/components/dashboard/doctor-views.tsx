@@ -1,30 +1,29 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Clock, FilePlus, FileText, ShieldCheck, ShieldX, Users } from "lucide-react";
+import { Clock, FilePlus, FileText, Pencil, ShieldCheck, ShieldX, Trash2, Users } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { useAuth } from "@/components/auth/auth-provider";
 import { useDashboardData } from "@/components/dashboard/data-provider";
-import { EmptyState, PrescriptionList } from "@/components/dashboard/shared";
+import { confirmAction, EmptyState, PrescriptionList, useFeedback } from "@/components/dashboard/shared";
 import { PrescriptionForm } from "@/components/dashboard/prescription-form";
 import { Welcome } from "@/components/dashboard/welcome";
+import { today } from "@/lib/rules";
 
 function useDoctor() {
-  const { user } = useAuth();
   const data = useDashboardData();
-  const me = data.users.find((u) => u.id === user?.id);
   return {
-    id: user?.id ?? "",
-    status: me?.status ?? "pending",
-    registrationNo: me?.registrationNo ?? user?.registrationNo,
-    prescriptions: data.prescriptions.filter((r) => r.doctorId === user?.id),
-    // Only verified patients can receive prescriptions.
-    patients: data.users.filter((u) => u.role === "patient" && u.status === "verified"),
+    ...data,
+    status: data.me.status,
+    registrationNo: data.me.registrationNo,
+    // Only verified patients can receive prescriptions (the server sends just those).
+    patients: data.users.filter((u) => u.role === "patient"),
   };
 }
 
@@ -47,6 +46,7 @@ function VerificationNotice({ status }: { status: string }) {
 export function DoctorOverview() {
   const d = useDoctor();
   const verified = d.status === "verified";
+  const valid = d.prescriptions.filter((r) => r.validUntil >= today()).length;
   return (
     <div className="space-y-6">
       <Welcome
@@ -55,9 +55,10 @@ export function DoctorOverview() {
       />
       <VerificationNotice status={d.status} />
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Prescriptions issued" value={d.prescriptions.length} icon={FileText} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Prescriptions issued" value={d.prescriptions.length} icon={FileText} hint={`${valid} still valid`} />
         <StatCard label="Patients" value={new Set(d.prescriptions.map((r) => r.patientId)).size} icon={Users} />
+        <StatCard label="Registered patients" value={d.patients.length} icon={Users} hint="you can prescribe to" />
         <StatCard
           label="Registration"
           value={verified ? "Verified" : d.status[0].toUpperCase() + d.status.slice(1)}
@@ -84,32 +85,92 @@ export function DoctorNewPrescription() {
   return (
     <>
       <PageHeader title="New prescription" description="Prescribed medicines become purchasable for the patient. Valid for 30 days." />
-      <VerificationNotice status={d.status} />
-      {verified && (
-        <Card className="max-w-3xl">
-          <CardContent>
-            {d.patients.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No patients are registered yet.</p>
-            ) : (
-              <PrescriptionForm mode="issue" doctorId={d.id} patients={d.patients} onDone={() => router.push("/doctor/prescriptions")} />
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <div className="space-y-4">
+        <VerificationNotice status={d.status} />
+        {verified && (
+          <Card className="max-w-3xl">
+            <CardContent>
+              {d.patients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No patients are registered yet.</p>
+              ) : (
+                <PrescriptionForm mode="issue" patients={d.patients} onDone={() => router.push("/doctor/prescriptions")} />
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </>
   );
 }
 
 export function DoctorHistory() {
   const d = useDoctor();
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const { done, node } = useFeedback();
+  const verified = d.status === "verified";
+
+  const q = query.trim().toLowerCase();
+  const patientName = (id: string) => d.users.find((u) => u.id === id)?.name ?? "";
+  const shown = d.prescriptions.filter(
+    (r) =>
+      !q ||
+      [r.id, r.diagnosis, patientName(r.patientId), ...r.items.map((i) => d.medicines.find((m) => m.id === i.medicineId)?.brand ?? "")]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+  );
+
+  async function revoke(id: string) {
+    if (!confirmAction(`Delete prescription ${id}? The patient will no longer be able to buy Rx medicines with it.`)) return;
+    await done(d.run("DELETE", `/api/prescriptions/${id}`), `Prescription ${id} deleted.`);
+  }
+
   return (
     <>
       <PageHeader
         title="Prescription history"
-        description="Every prescription you have issued."
-        actions={d.status === "verified" ? <Link href="/doctor/prescriptions/new" className={buttonVariants()}><FilePlus /> New prescription</Link> : <StatusBadge status={d.status} />}
+        description="Every prescription you have issued. Edit or delete them while following up on a case."
+        actions={verified ? <Link href="/doctor/prescriptions/new" className={buttonVariants()}><FilePlus /> New prescription</Link> : <StatusBadge status={d.status} />}
       />
-      {d.prescriptions.length === 0 ? <EmptyState>Nothing issued yet.</EmptyState> : <PrescriptionList items={d.prescriptions} party="doctor" />}
+      <div className="space-y-4">
+        {node}
+        {d.prescriptions.length > 0 && (
+          <Input className="h-10 max-w-sm" placeholder="Search by patient, diagnosis or medicine…" aria-label="Search prescriptions" value={query} onChange={(e) => setQuery(e.target.value)} />
+        )}
+        {d.prescriptions.length === 0 ? (
+          <EmptyState>Nothing issued yet.</EmptyState>
+        ) : shown.length === 0 ? (
+          <EmptyState>No prescription matches “{query}”.</EmptyState>
+        ) : (
+          <PrescriptionList
+            items={shown}
+            party="doctor"
+            actions={(rx) =>
+              editing === rx.id ? null : (
+                <>
+                  <Button size="sm" variant="outline" disabled={!verified} onClick={() => { setEditing(rx.id); setTimeout(() => document.getElementById("edit-rx")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}><Pencil /> Edit</Button>
+                  <Button size="sm" variant="destructive" disabled={!verified} onClick={() => revoke(rx.id)}><Trash2 /> Delete</Button>
+                </>
+              )
+            }
+          />
+        )}
+        {editing && d.prescriptions.find((r) => r.id === editing) && (
+          <Card id="edit-rx" className="max-w-3xl border-primary/40">
+            <CardContent className="space-y-3">
+              <h2 className="font-semibold">Edit {editing}</h2>
+              <PrescriptionForm
+                key={editing}
+                mode="edit"
+                rx={d.prescriptions.find((r) => r.id === editing)!}
+                onDone={() => { setEditing(null); }}
+                onCancel={() => setEditing(null)}
+              />
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Minus, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -10,26 +10,33 @@ import { RxBadge } from "@/components/shared/status-badge";
 import { formatBDT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { CautionReport, Order, Prescription } from "@/lib/types";
-import { subscribeStore } from "@/lib/auth-store";
-import { addOrders, getDataSnapshot, parseOverlay, prescribedMedicineIds, today } from "@/lib/dashboard-store";
+import { api } from "@/lib/api";
+import { prescribedMedicineIds } from "@/lib/rules";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useCart } from "./cart-provider";
 
-/** Prescriptions covering this patient: seed ones from the server + ones saved in the browser. */
-export function CartView({ seedPrescriptions }: { seedPrescriptions: Prescription[] }) {
+/** Cart + checkout. Rx-only items are checked against the patient's valid prescriptions on the server. */
+export function CartView() {
   const { user } = useAuth();
   const patient = user?.role === "patient" ? user : null;
   const patientName = patient?.name ?? null;
-  const rawData = useSyncExternalStore(subscribeStore, getDataSnapshot, () => null);
-  const prescribedIds = useMemo(
-    () => (patient ? prescribedMedicineIds([...parseOverlay(rawData).prescriptions, ...seedPrescriptions], patient.id) : []),
-    [patient, rawData, seedPrescriptions],
-  );
+  const patientId = patient?.id;
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    api<Prescription[]>("GET", "/api/prescriptions").then((r) => {
+      if (!cancelled && r.ok) setPrescriptions(r.data);
+    });
+    return () => { cancelled = true; };
+  }, [patientId]);
+  const prescribedIds = patientId ? prescribedMedicineIds(prescriptions, patientId) : [];
   const { lines, total, setQuantity, remove, clear } = useCart();
   const [report, setReport] = useState<CautionReport | null>(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<string[] | null>(null);
+  const [preOrder, setPreOrder] = useState(false);
 
   const medicineKey = [...new Set(lines.map((l) => l.medicineId))].sort().join(",");
 
@@ -46,26 +53,20 @@ export function CartView({ seedPrescriptions }: { seedPrescriptions: Prescriptio
 
   const blocked = lines.filter((l) => l.rx && !prescribedIds.includes(l.medicineId));
 
-  /** One order per pharmacy, saved in the browser. Rx-only items need a valid prescription on file. */
-  function checkout() {
+  /** One order per pharmacy, saved on the server. Out-of-stock lines become a pre-order. */
+  async function checkout() {
     if (!patient) return;
     setError(null);
     if (blocked.length > 0) return setError("A valid prescription is required for Rx-only medicines.");
     setPlacing(true);
-    const stamp = Date.now().toString(36).toUpperCase();
-    const orders: Order[] = [...Map.groupBy(lines, (l) => l.pharmacyId)].map(([pharmacyId, group], i) => ({
-      id: `ORD-${stamp}${i + 1}`,
-      patientId: patient.id,
-      pharmacyId,
-      lines: group.map((l) => ({ medicineId: l.medicineId, quantity: l.quantity, unitPrice: l.unitPrice })),
-      total: group.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0),
-      status: "placed",
-      createdAt: today(),
-    }));
-    addOrders(orders);
-    setPlaced(orders.map((o) => o.id));
-    clear();
+    const r = await api<Order[]>("POST", "/api/orders", {
+      lines: lines.map((l) => ({ medicineId: l.medicineId, pharmacyId: l.pharmacyId, quantity: l.quantity })),
+    });
     setPlacing(false);
+    if (!r.ok) return setError(r.blocked?.length ? `${r.error} (${r.blocked.join(", ")})` : r.error);
+    setPlaced(r.data.map((o) => o.id));
+    setPreOrder(r.data.some((o) => o.status === "pre-order"));
+    clear();
   }
 
   if (placed) {
@@ -74,7 +75,7 @@ export function CartView({ seedPrescriptions }: { seedPrescriptions: Prescriptio
         <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
           <CheckCircle2 className="size-10 text-primary" />
           <h2 className="text-lg font-semibold">Order placed</h2>
-          <p className="text-sm text-muted-foreground">Reference: {placed.join(", ")}. Pay on delivery.</p>
+          <p className="text-sm text-muted-foreground">Reference: {placed.join(", ")}. Pay on delivery.{preOrder && " Some items are out of stock, so that order is a pre-order and the pharmacy will confirm when it arrives."}</p>
           <Link href="/patient/orders" className={buttonVariants()}>Track orders</Link>
         </CardContent>
       </Card>

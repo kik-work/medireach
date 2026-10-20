@@ -7,7 +7,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { role } = await searchParams;
   return (
     <AuthShell>
-      <AuthForm mode="login" initialRole={role === "doctor" ? "doctor" : "patient"} />
+      <AuthForm mode="login" initialRole={role === "doctor" || role === "pharmacist" ? role : "patient"} />
     </AuthShell>
   );
 }

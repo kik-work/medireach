@@ -8,7 +8,8 @@ import { Bell, ExternalLink, LogOut, Menu, Pill, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/constants";
-import { logout, type Session } from "@/lib/auth-store";
+import { useAuth } from "@/components/auth/auth-provider";
+import type { Session } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export interface NavItem {
@@ -28,14 +29,15 @@ interface Props {
 const initials = (name: string) =>
   name.replace(/^dr\.?\s+/i, "").split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "U";
 
-/** Sidebar + header layout shared by the patient, doctor and admin dashboards. */
+/** Sidebar + header layout shared by every role dashboard. */
 export function DashboardShell({ roleLabel, user, nav, children }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { logout } = useAuth();
 
-  function onLogout() {
-    logout();
+  async function onLogout() {
+    await logout();
     router.replace(user.role === "admin" ? "/admin" : "/login");
   }
 

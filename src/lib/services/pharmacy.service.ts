@@ -1,4 +1,4 @@
-import { db } from "@/lib/data";
+import { db, nextId, save } from "@/lib/data";
 import type { City, Pharmacy, StockItem } from "@/lib/types";
 
 export interface Availability {
@@ -33,15 +33,47 @@ export function getAvailability(medicineId: string, city: City) {
 export const getInventory = (pharmacyId: string) =>
   db.stock.filter((s) => s.pharmacyId === pharmacyId);
 
+export type PharmacyInput = Pick<Pharmacy, "name" | "city" | "area" | "address" | "phone" | "licenseNo">;
+
+export function createPharmacy(input: PharmacyInput): Pharmacy {
+  const pharmacy: Pharmacy = { ...input, id: nextId("ph", db.pharmacies.map((p) => p.id)), rating: 0, status: "pending" };
+  db.pharmacies.push(pharmacy);
+  return pharmacy;
+}
+
+export function updatePharmacy(id: string, patch: Partial<PharmacyInput>) {
+  const p = getPharmacy(id);
+  if (!p) return undefined;
+  for (const key of ["name", "area", "address", "phone", "licenseNo"] as const) {
+    const v = patch[key];
+    if (typeof v === "string" && (v.trim() || key === "area")) p[key] = v.trim();
+  }
+  if (patch.city) p.city = patch.city;
+  save();
+  return p;
+}
+
 export function setPharmacyStatus(id: string, status: Pharmacy["status"]) {
   const p = getPharmacy(id);
-  if (p) p.status = status;
+  if (p) {
+    p.status = status;
+    save();
+  }
+  return p;
 }
 
 export function updateStock(pharmacyId: string, medicineId: string, quantity: number, price: number) {
   const existing = db.stock.find((s) => s.pharmacyId === pharmacyId && s.medicineId === medicineId);
   if (existing) Object.assign(existing, { quantity, price });
   else db.stock.push({ pharmacyId, medicineId, quantity, price });
+  save();
+}
+
+export function removeStock(pharmacyId: string, medicineId: string) {
+  const before = db.stock.length;
+  db.stock = db.stock.filter((s) => !(s.pharmacyId === pharmacyId && s.medicineId === medicineId));
+  save();
+  return db.stock.length < before;
 }
 
 /** Stock summary across verified pharmacies — used on medicine cards. */

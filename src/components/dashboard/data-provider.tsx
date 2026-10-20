@@ -1,78 +1,77 @@
 "use client";
 
-import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
-import { getUsersSnapshot, parseLocalUsers, subscribeStore } from "@/lib/auth-store";
-import { getDataSnapshot, parseOverlay } from "@/lib/dashboard-store";
-import type { DashboardSeed } from "@/lib/services/seed.service";
-import type { Medicine, Order, Pharmacy, Prescription, StockItem, VerificationStatus } from "@/lib/types";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { api, type ApiResult } from "@/lib/api";
+import type { DashboardData } from "@/lib/dashboard-types";
 
-/** A person as the dashboards see them: seed users plus accounts created through sign up. */
-export interface DashUser {
-  id: string;
-  name: string;
-  identifier: string;
-  role: "patient" | "doctor" | "pharmacist";
-  status: VerificationStatus;
-  registrationNo?: string;
-  city?: string;
-  pharmacyId?: string;
+export type { DashboardData, DashUser } from "@/lib/dashboard-types";
+
+type Method = "POST" | "PATCH" | "DELETE";
+
+interface Ctx {
+  data: DashboardData;
+  refresh: () => Promise<void>;
+  /** Calls the server, then reloads the dashboard data on success. */
+  run: <T = unknown>(method: Method, url: string, body?: unknown) => Promise<ApiResult<T>>;
 }
 
-export interface DashboardData {
-  medicines: Medicine[];
-  pharmacies: Pharmacy[];
-  stock: StockItem[];
-  users: DashUser[];
-  prescriptions: Prescription[];
-  orders: Order[];
-}
+const DataContext = createContext<Ctx | null>(null);
 
-const DataContext = createContext<DashboardData | null>(null);
+/** Loads this user's dashboard data from the server (/api/dashboard) and reloads it after every change. */
+export function DashboardDataProvider({ children }: { children: React.ReactNode }) {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-export function DashboardDataProvider({ seed, children }: { seed: DashboardSeed; children: React.ReactNode }) {
-  const rawData = useSyncExternalStore(subscribeStore, getDataSnapshot, () => null);
-  const rawUsers = useSyncExternalStore(subscribeStore, getUsersSnapshot, () => null);
+  const refresh = useCallback(async () => {
+    const r = await api<DashboardData>("GET", "/api/dashboard");
+    if (r.ok) {
+      setData(r.data);
+      setError(null);
+    } else {
+      setError(r.error);
+    }
+  }, []);
 
-  const data = useMemo<DashboardData>(() => {
-    const o = parseOverlay(rawData);
-    const seedUsers: DashUser[] = seed.users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      identifier: u.email,
-      role: u.role as DashUser["role"],
-      status: o.userStatus[u.id] ?? u.status,
-      registrationNo: u.registrationNo,
-      city: u.city,
-      pharmacyId: u.pharmacyId,
-    }));
-    const signedUp: DashUser[] = parseLocalUsers(rawUsers).flatMap((u) =>
-      u.role === "admin"
-        ? []
-        : [{
-            id: u.id,
-            name: u.name,
-            identifier: u.identifier,
-            role: u.role,
-            // New doctors wait for admin approval; patients need none.
-            status: o.userStatus[u.id] ?? (u.role === "doctor" ? ("pending" as const) : ("verified" as const)),
-            registrationNo: u.registrationNo,
-          }],
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount
+    void refresh();
+  }, [refresh]);
+
+  const run = useCallback<Ctx["run"]>(
+    async <T,>(method: Method, url: string, body?: unknown) => {
+      const r = await api<T>(method, url, body);
+      if (r.ok) await refresh();
+      return r;
+    },
+    [refresh],
+  );
+
+  const value = useMemo(() => (data ? { data, refresh, run } : null), [data, refresh, run]);
+
+  if (!value) {
+    return error ? (
+      <div className="flex flex-col items-center gap-3 py-24 text-center">
+        <p className="text-sm text-destructive">{error}</p>
+        <Button variant="outline" onClick={refresh}>Try again</Button>
+      </div>
+    ) : (
+      <div className="flex justify-center py-24">
+        <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label="Loading" />
+      </div>
     );
-    return {
-      medicines: [...seed.medicines, ...o.medicines],
-      pharmacies: seed.pharmacies.map((p) => ({ ...p, status: o.pharmacyStatus[p.id] ?? p.status })),
-      stock: seed.stock,
-      users: [...seedUsers, ...signedUp],
-      prescriptions: [...o.prescriptions, ...seed.prescriptions],
-      orders: [...o.orders, ...seed.orders].map((ord) => ({ ...ord, status: o.orderStatus[ord.id] ?? ord.status })),
-    };
-  }, [seed, rawData, rawUsers]);
-
-  return <DataContext.Provider value={data}>{children}</DataContext.Provider>;
+  }
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 
-export function useDashboardData(): DashboardData {
+function useCtx() {
   const ctx = useContext(DataContext);
-  if (!ctx) throw new Error("useDashboardData must be used inside <DashboardDataProvider>");
+  if (!ctx) throw new Error("Dashboard hooks must be used inside <DashboardDataProvider>");
   return ctx;
+}
+
+/** The role-scoped data plus `run` / `refresh`. */
+export function useDashboardData(): DashboardData & Pick<Ctx, "run" | "refresh"> {
+  const { data, run, refresh } = useCtx();
+  return { ...data, run, refresh };
 }

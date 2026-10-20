@@ -1,7 +1,7 @@
-import { notFound } from "next/navigation";
+import { RoleDashboard } from "@/components/dashboard/role-dashboard";
 
-// Pharmacist accounts are not part of the new local auth (patient / doctor / admin only).
-// Pages below this layout are unreachable until a pharmacist flow is added.
-export default function PharmacistLayout(_props: LayoutProps<"/pharmacist">) {
-  notFound();
+export const metadata = { title: "Pharmacist" };
+
+export default function PharmacistLayout({ children }: LayoutProps<"/pharmacist">) {
+  return <RoleDashboard role="pharmacist">{children}</RoleDashboard>;
 }

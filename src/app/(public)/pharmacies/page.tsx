@@ -5,6 +5,8 @@ import { IMAGES } from "@/lib/images";
 import { CITIES } from "@/lib/constants";
 import { listPharmacies } from "@/lib/services/pharmacy.service";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Pharmacies" };
 
 export default function PharmaciesPage() {

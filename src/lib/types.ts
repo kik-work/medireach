@@ -99,6 +99,21 @@ export interface Order {
   total: number;
   status: OrderStatus;
   createdAt: string;
+  /** true when stock was taken from the pharmacy at placement (restored on cancel). */
+  reserved?: boolean;
+}
+
+/** Chronic-medicine refill subscription. */
+export interface Refill {
+  id: string;
+  patientId: string;
+  medicineId: string;
+  pharmacyId: string;
+  quantity: number;
+  everyDays: number;
+  /** Date of the next automatic order (ISO). */
+  nextDate: string;
+  active: boolean;
 }
 
 export interface Interaction {

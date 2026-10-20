@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Activity, ArrowRight, Bug, Building2, Check, ChevronDown, ClipboardCheck, Droplets, FileText, Flower2, HeartPulse,
   Lock, MapPin, Pill, Search, ShieldCheck, ShoppingCart, Sparkles, Stethoscope, Store, Truck, User, Brain, AlertOctagon, Copy,
+  X, Scale, PackageCheck, QrCode, Snowflake, Database, Flag, CreditCard, Smartphone, EyeOff, Clock,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -46,11 +47,50 @@ const categoryIcons: Record<string, LucideIcon> = {
 const audiences = [
   { icon: User, label: "Patients", text: "Find medicine, understand it, and get it delivered.", points: ["Search nationwide stock", "See cautions before you pay", "Keep every prescription in one place"], href: "/login?role=patient", cta: "Continue as patient" },
   { icon: Stethoscope, label: "Doctors", text: "Prescribe digitally and link it to purchases.", points: ["Searchable medicine database", "Prescriptions with validity dates", "Full issued history"], href: "/login?role=doctor", cta: "Continue as doctor" },
+  { icon: Store, label: "Pharmacies", text: "List stock and reach patients beyond your street.", points: ["Publish stock and price", "Fulfil verified prescriptions", "Track every order"], href: "/pharmacies", cta: "Browse pharmacies" },
 ];
+
+const today = [
+  "Patients walk from shop to shop looking for a medicine.",
+  "Rare drugs are invisible: no system shows which pharmacy has what.",
+  "Brand names hide the active ingredient, so duplicates slip through.",
+  "Paper prescriptions get lost, forged or reused.",
+];
+
+const tomorrow = [
+  "Search once, see stock across the whole country.",
+  "Rare medicines become discoverable, with price and location.",
+  "Ingredient-level alerts catch duplicates such as Napa + ACE.",
+  "Digital prescriptions are tied to the patient and the purchase.",
+];
+
+const connected = [
+  { icon: User, label: "Patients", text: "Search, understand, order" },
+  { icon: Stethoscope, label: "Doctors", text: "Prescribe and decide" },
+  { icon: Store, label: "Pharmacies", text: "List stock and fulfil" },
+];
+
+type RoadmapStatus = "partial" | "next";
+const roadmap: { icon: LucideIcon; risk: string; plan: string; status: RoadmapStatus }[] = [
+  { icon: Scale, risk: "Regulatory uncertainty", plan: "Study the DGDA online pharmacy SOP and design around it.", status: "next" },
+  { icon: PackageCheck, risk: "Fake or expired stock", plan: "Batch numbers, expiry dates and admin audits. Admin verification of pharmacies exists today.", status: "partial" },
+  { icon: QrCode, risk: "Prescription fraud", plan: "QR codes, mark-as-used after purchase, pharmacist review. Validity dates and Rx gating exist today.", status: "partial" },
+  { icon: CreditCard, risk: "Simulated payment and delivery", plan: "Sandbox integrations with bKash and SSLCommerz.", status: "next" },
+  { icon: Database, risk: "Small medicine database", plan: "Source from official DGDA drug lists, reviewed by pharmacists.", status: "next" },
+  { icon: Clock, risk: "Stale inventory", plan: "Last-updated timestamps, low-stock flags, pharmacy software sync. Pharmacists edit stock today.", status: "partial" },
+  { icon: Snowflake, risk: "Cold-chain and delivery", plan: "Flag cold-chain medicines and limit delivery by type or region.", status: "next" },
+  { icon: EyeOff, risk: "Health data privacy", plan: "Encryption, access logs and a clear data-protection policy.", status: "next" },
+  { icon: Smartphone, risk: "Limited reach", plan: "Mobile app, Bangla language and a simple UI for elderly users.", status: "next" },
+  { icon: Flag, risk: "AI mistakes", plan: "Doctor and pharmacist review of data, plus a “report an error” option.", status: "next" },
+];
+
+const STATUS_LABEL: Record<RoadmapStatus, string> = { partial: "Partly in prototype", next: "Planned next" };
 
 const faqs = [
   ["Can I buy any medicine without a prescription?", "Only over-the-counter medicines. Rx-only medicines are blocked at checkout until a valid prescription from a verified doctor is on your account."],
   ["Does the AI tell me what to take?", "No. It never starts a treatment decision. It only annotates medicines a licensed doctor already chose, using facts from a curated database."],
+  ["Is MediReach a real pharmacy?", "No. It is a prototype that shows how buying medicine online in Bangladesh could work. Verification, payment and delivery are simulated. See the roadmap below for what comes next."],
+  ["What if the AI is wrong?", "It can be. Its answers are only as good as the curated database behind it, which is why pharmacist and doctor review of entries and a “report an error” option are on the roadmap. Always follow your doctor."],
   ["How do I find a rare medicine?", "Search for it. Every pharmacy in the country that holds stock is listed, with your city shown first."],
   ["Who verifies doctors and pharmacies?", "The admin team reviews every registration before it can issue prescriptions or list stock."],
 ];
@@ -60,6 +100,8 @@ const SEVERITY_STYLE: Record<string, string> = {
   moderate: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
   minor: "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
 };
+
+export const dynamic = "force-dynamic";
 
 export default function HomePage() {
   const rare = listMedicines({ rareOnly: true });
@@ -82,13 +124,13 @@ export default function HomePage() {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
           <Badge variant="outline" className="gap-1.5 py-3 pr-3 pl-2.5">
             <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" /><span className="relative inline-flex size-2 rounded-full bg-primary" /></span>
-            Digital medicine access · Bangladesh
+            Prototype · The future of buying medicine in Bangladesh
           </Badge>
           <h1 className="text-4xl leading-[1.1] font-extrabold tracking-tight md:text-5xl lg:text-6xl">
             Find the medicine <span className="bg-gradient-to-r from-primary to-teal-400 bg-clip-text text-transparent">no shop nearby</span> keeps.
           </h1>
           <p className="max-w-xl text-lg text-muted-foreground">
-            A nationwide inventory for rare drugs, prescriptions linked to purchases, and an AI layer that cautions but never prescribes.
+            One place where patients, doctors and pharmacies meet: search stock across the country, prescribe digitally, and get safety alerts from an AI that <b className="text-foreground">informs while the doctor decides</b>.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/medicines" className={cn(buttonVariants({ size: "lg" }), "h-11 px-5 text-base shadow-lg shadow-primary/25 transition hover:-translate-y-0.5")}>Search medicines <ArrowRight /></Link>
@@ -120,6 +162,55 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Vision */}
+      <section className="pt-8">
+        <Reveal>
+          <SectionHeading
+            eyebrow="Our vision"
+            title="Medicine access that doesn't depend on which street you live on"
+            description="Today you must visit a physical pharmacy, and no system shows who has what. MediReach imagines one connected network instead."
+          />
+        </Reveal>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Reveal>
+            <div className="h-full rounded-3xl border bg-muted/40 p-7">
+              <p className="mb-4 text-xs font-bold tracking-[0.18em] text-muted-foreground uppercase">Today</p>
+              <ul className="space-y-3">
+                {today.map((t) => (
+                  <li key={t} className="flex gap-3 text-muted-foreground"><span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"><X className="size-3" /></span>{t}</li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+          <Reveal delay={120}>
+            <div className="h-full rounded-3xl border border-primary/40 bg-primary/5 p-7 shadow-lg shadow-primary/5">
+              <p className="mb-4 text-xs font-bold tracking-[0.18em] text-primary uppercase">With MediReach</p>
+              <ul className="space-y-3">
+                {tomorrow.map((t) => (
+                  <li key={t} className="flex gap-3 font-medium"><span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"><Check className="size-3" /></span>{t}</li>
+                ))}
+              </ul>
+            </div>
+          </Reveal>
+        </div>
+        <Reveal delay={100}>
+          <div className="mt-8 grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr]">
+            {connected.flatMap(({ icon: Icon, label, text }, i) => {
+              const node = (
+                <div key={label} className="flex items-center gap-3 rounded-2xl border bg-card p-4">
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Icon className="size-5" /></span>
+                  <span><span className="block font-bold">{label}</span><span className="text-sm text-muted-foreground">{text}</span></span>
+                </div>
+              );
+              return i < connected.length - 1
+                ? [node, <ArrowRight key={`a${i}`} className="mx-auto hidden size-5 text-primary sm:block" />]
+                : [node];
+            })}
+          </div>
+          <p className="mt-5 text-center text-sm text-muted-foreground">Three roles, one platform. Every step stays under a licensed human&apos;s control.</p>
+        </Reveal>
       </section>
 
       {/* How it works */}
@@ -347,6 +438,33 @@ export default function HomePage() {
           </ul>
           <Link href="/login?role=doctor" className={cn(buttonVariants({ size: "lg" }), "h-11 px-5 text-base")}>Doctor access <ArrowRight /></Link>
         </Reveal>
+      </section>
+
+      {/* Roadmap */}
+      <section id="roadmap">
+        <Reveal>
+          <SectionHeading
+            eyebrow="Roadmap"
+            title="Honest about the gaps"
+            description="MediReach is a prototype. Verification, payment and delivery are simulated. Here is what a real launch must solve, and how we plan to solve it."
+          />
+        </Reveal>
+        <div className="grid gap-4 md:grid-cols-2">
+          {roadmap.map(({ icon: Icon, risk, plan, status }, i) => (
+            <Reveal key={risk} delay={(i % 2) * 90}>
+              <article className="flex h-full gap-4 rounded-2xl border bg-card p-5 transition duration-300 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="size-5" /></span>
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold">{risk}</h3>
+                    <Badge variant={status === "partial" ? "default" : "outline"} className="text-[0.7rem]">{STATUS_LABEL[status]}</Badge>
+                  </div>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{plan}</p>
+                </div>
+              </article>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       {/* FAQ */}
