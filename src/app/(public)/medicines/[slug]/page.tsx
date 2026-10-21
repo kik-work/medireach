@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, BadgeCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AvailabilityList } from "@/components/medicine/availability-list";
@@ -8,6 +8,7 @@ import { CautionPanel } from "@/components/caution/caution-panel";
 import { RxBadge } from "@/components/shared/status-badge";
 import { CITIES, DEFAULT_CITY, formatBDT } from "@/lib/constants";
 import { getMedicineBySlug, sameIngredientBrands } from "@/lib/services/medicine.service";
+import { getUser } from "@/lib/services/user.service";
 import { getAvailability } from "@/lib/services/pharmacy.service";
 import { buildCautionReport } from "@/lib/services/caution.service";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export default async function MedicineDetailPage({ params, searchParams }: PageP
   const { nearby, national } = getAvailability(medicine.id, city);
   const report = buildCautionReport([medicine.id]);
   const siblings = sameIngredientBrands(medicine);
+  const reviewer = medicine.review?.reviewedBy ? getUser(medicine.review.reviewedBy) : undefined;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_400px]">
@@ -42,6 +44,11 @@ export default async function MedicineDetailPage({ params, searchParams }: PageP
           <h1 className="text-3xl font-bold">{medicine.brand} <span className="font-normal text-muted-foreground">{medicine.strength}</span></h1>
           <p className="text-muted-foreground">{medicine.generic} · {medicine.form} · {medicine.manufacturer} · reference {formatBDT(medicine.price)}</p>
           <p className="mt-3">{medicine.description}</p>
+          {reviewer && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <BadgeCheck className="size-3.5 text-primary" /> Information reviewed by {reviewer.name}{reviewer.registrationNo ? ` (${reviewer.registrationNo})` : ""} on {medicine.review?.reviewedAt}
+            </p>
+          )}
         </div>
 
         {medicine.rx && (

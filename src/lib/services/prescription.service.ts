@@ -1,7 +1,7 @@
 import { db, nextId, save } from "@/lib/data";
 import type { Prescription, PrescriptionItem } from "@/lib/types";
 
-import { addDays, isPrescriptionValid as isValid, today, VALID_DAYS } from "@/lib/rules";
+import { addDays, isMedicineLive, isPrescriptionValid as isValid, today, VALID_DAYS } from "@/lib/rules";
 
 export { isValid, today, addDays, VALID_DAYS };
 
@@ -27,7 +27,7 @@ export function cleanItems(raw: unknown): PrescriptionItem[] {
   const items: PrescriptionItem[] = [];
   for (const r of raw as Partial<PrescriptionItem>[]) {
     const medicineId = String(r?.medicineId ?? "");
-    if (!medicineId || seen.has(medicineId) || !db.medicines.some((m) => m.id === medicineId)) continue;
+    if (!medicineId || seen.has(medicineId) || !db.medicines.some((m) => m.id === medicineId && isMedicineLive(m))) continue;
     seen.add(medicineId);
     items.push({
       medicineId,
@@ -47,6 +47,7 @@ export function createPrescription(input: {
   uploaded?: boolean;
   fileName?: string;
   doctorName?: string;
+  appointmentId?: string;
 }) {
   const issuedAt = input.issuedAt && input.issuedAt <= today() ? input.issuedAt : today();
   const rx: Prescription = {
@@ -57,6 +58,7 @@ export function createPrescription(input: {
     validUntil: addDays(issuedAt, VALID_DAYS),
     diagnosis: input.diagnosis.trim(),
     items: input.items,
+    ...(input.appointmentId && { appointmentId: input.appointmentId }),
     ...(input.uploaded && { uploaded: true, fileName: input.fileName || undefined, doctorName: input.doctorName?.trim() || undefined }),
   };
   db.prescriptions.unshift(rx);

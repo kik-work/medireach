@@ -3,7 +3,7 @@ import { dayOffset } from "./dates";
 
 export const prescriptions: Prescription[] = [
   {
-    id: "rx-1001", doctorId: "u-doc1", patientId: "u-pat1", issuedAt: dayOffset(-10), validUntil: dayOffset(20),
+    id: "rx-1001", doctorId: "u-doc1", patientId: "u-pat1", issuedAt: dayOffset(-10), validUntil: dayOffset(20), appointmentId: "ap-4",
     diagnosis: "Hypertension, high cholesterol",
     items: [
       { medicineId: "m04", dose: "1 tablet once daily", days: 60 },

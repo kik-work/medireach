@@ -1,4 +1,5 @@
 import type { Medicine } from "@/lib/types";
+import { dayOffset } from "./dates";
 
 /** Curated medicine database (reference information, not medical advice). */
 export const medicines: Medicine[] = [
@@ -136,5 +137,28 @@ export const medicines: Medicine[] = [
     uses: ["Transfusional iron overload", "Thalassaemia"],
     cautions: ["Kidney and liver function must be monitored.", "Take on an empty stomach."],
     sideEffects: ["Nausea", "Rash", "Raised creatinine"],
+  },
+  // Added by the admin, waiting for a verified doctor. They are not live until a doctor approves them
+  // and supplies the description, uses, cautions, side effects and interactions.
+  {
+    id: "m16", slug: "fexo-120", brand: "Fexo", generic: "Fexofenadine", ingredients: ["fexofenadine"],
+    strength: "120 mg", form: "Tablet", manufacturer: "Square Pharmaceuticals", category: "Allergy",
+    rx: false, rare: false, price: 8,
+    description: "", uses: [], cautions: [], sideEffects: [],
+    review: { status: "pending" },
+  },
+  {
+    id: "m17", slug: "maxpro-40", brand: "Maxpro", generic: "Esomeprazole", ingredients: ["esomeprazole"],
+    strength: "40 mg", form: "Tablet", manufacturer: "Renata Limited", category: "Gastric & Acidity",
+    rx: false, rare: false, price: 9,
+    description: "", uses: [], cautions: [], sideEffects: [],
+    review: { status: "pending" },
+  },
+  {
+    id: "m18", slug: "cipro-x-500", brand: "Cipro-X", generic: "Ciprofloxacin", ingredients: ["ciprofloxacin"],
+    strength: "500 mg", form: "Tablet", manufacturer: "Beacon Pharmaceuticals", category: "Antibiotic",
+    rx: false, rare: false, price: 14,
+    description: "", uses: [], cautions: [], sideEffects: [],
+    review: { status: "rejected", reviewedBy: "u-doc1", reviewedAt: dayOffset(-2), note: "Ciprofloxacin is prescription-only. Mark it Rx and resubmit." },
   },
 ];

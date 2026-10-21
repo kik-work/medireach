@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FilePlus, FileText, LayoutDashboard, Package, Pill, Repeat, Search, ShieldCheck, ShoppingCart, Sparkles, Store, Warehouse,
+  CalendarCheck, ClipboardCheck, FilePlus, FileText, LayoutDashboard, Package, Pill, Repeat, Search, ShieldCheck, ShoppingCart, Sparkles, Stethoscope, Store, Warehouse,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AdminLogin } from "@/components/auth/admin-login";
@@ -17,6 +17,8 @@ const NAV: Record<Role, { label: string; items: NavItem[] }> = {
     label: "Patient",
     items: [
       { href: "/patient", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/patient/doctors", label: "Find a doctor", icon: Stethoscope },
+      { href: "/patient/appointments", label: "My appointments", icon: CalendarCheck },
       { href: "/medicines", label: "Find medicine", icon: Search },
       { href: "/medicines?rare=1", label: "Rare medicines", icon: Sparkles },
       { href: "/patient/prescriptions", label: "My prescriptions", icon: FileText },
@@ -29,8 +31,10 @@ const NAV: Record<Role, { label: string; items: NavItem[] }> = {
     label: "Doctor",
     items: [
       { href: "/doctor", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/doctor/appointments", label: "Appointments", icon: CalendarCheck },
       { href: "/doctor/prescriptions/new", label: "New prescription", icon: FilePlus },
       { href: "/doctor/prescriptions", label: "Prescription history", icon: FileText },
+      { href: "/doctor/medicines", label: "Medicine reviews", icon: ClipboardCheck },
       { href: "/medicines", label: "Medicine catalogue", icon: Pill },
     ],
   },

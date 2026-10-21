@@ -1,6 +1,10 @@
 import { db } from "@/lib/data";
 import type { DashboardData, DashUser } from "@/lib/dashboard-types";
 import type { User } from "@/lib/types";
+import { busySlots, listForUser } from "./appointment.service";
+import { isMedicineLive } from "@/lib/rules";
+import { listPublicProfiles } from "./doctor.service";
+import { listAllMedicines, listPendingMedicines, listSubmittedBy } from "./medicine.service";
 import { listOrders } from "./order.service";
 
 const toDash = (u: User, withContact: boolean): DashUser => ({
@@ -14,11 +18,17 @@ const toDash = (u: User, withContact: boolean): DashUser => ({
   pharmacyId: u.pharmacyId,
 });
 
+const consult = (doctorProfiles: DashboardData["doctorProfiles"], appointments: DashboardData["appointments"], busy: DashboardData["busy"]) => ({ doctorProfiles, appointments, busy });
+
 /** Builds the data one signed-in user may see. Personal data of other users is never included. */
 export function getDashboardData(me: User): DashboardData {
+  const appointments = me.role === "patient" || me.role === "doctor" ? listForUser(me) : [];
   const base = {
     me: toDash(me, true),
-    medicines: db.medicines,
+    // Only approved medicines are live. Admin sees all; a doctor also gets the ones waiting for review.
+    // A pharmacist gets only their own proposals that are not live yet.
+    medicines: me.role === "admin" ? listAllMedicines() : db.medicines.filter(isMedicineLive),
+    pendingMedicines: me.role === "doctor" ? listPendingMedicines() : me.role === "pharmacist" ? listSubmittedBy(me.id) : [],
     interactionCount: db.interactions.length,
   };
 
@@ -28,10 +38,12 @@ export function getDashboardData(me: User): DashboardData {
         ...base,
         pharmacies: db.pharmacies.filter((p) => p.status === "verified"),
         stock: db.stock,
-        users: db.users.filter((u) => u.role === "doctor" && u.status === "verified").map((u) => toDash(u, false)),
+        // Verified doctors, plus any doctor of this patient's appointments (so names never go missing).
+        users: db.users.filter((u) => u.role === "doctor" && (u.status === "verified" || appointments.some((a) => a.doctorId === u.id))).map((u) => toDash(u, false)),
         prescriptions: db.prescriptions.filter((r) => r.patientId === me.id),
         orders: listOrders({ patientId: me.id }),
         refills: db.refills.filter((r) => r.patientId === me.id),
+        ...consult(listPublicProfiles(), appointments, busySlots()),
       };
 
     case "doctor":
@@ -40,10 +52,11 @@ export function getDashboardData(me: User): DashboardData {
         pharmacies: [],
         stock: [],
         // Only verified patients can receive a prescription.
-        users: db.users.filter((u) => u.role === "patient" && u.status === "verified").map((u) => toDash(u, false)),
+        users: db.users.filter((u) => u.role === "patient" && (u.status === "verified" || appointments.some((a) => a.patientId === u.id))).map((u) => toDash(u, false)),
         prescriptions: db.prescriptions.filter((r) => r.doctorId === me.id),
         orders: [],
         refills: [],
+        ...consult(db.doctorProfiles.filter((p) => p.doctorId === me.id), appointments, busySlots(me.id)),
       };
 
     case "pharmacist": {
@@ -59,6 +72,7 @@ export function getDashboardData(me: User): DashboardData {
         prescriptions: db.prescriptions.filter((r) => customerIds.has(r.patientId)),
         orders,
         refills: [],
+        ...consult([], [], []),
       };
     }
 
@@ -71,6 +85,8 @@ export function getDashboardData(me: User): DashboardData {
         prescriptions: db.prescriptions,
         orders: listOrders(),
         refills: db.refills,
+        // Consultations are private health data, so admins see the doctor profiles only.
+        ...consult(db.doctorProfiles, [], []),
       };
   }
 }

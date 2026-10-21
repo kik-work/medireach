@@ -1,4 +1,4 @@
-import type { Medicine, Order, Pharmacy, Prescription, Refill, Role, StockItem, VerificationStatus } from "@/lib/types";
+import type { Appointment, BusySlot, DoctorProfile, Medicine, Order, Pharmacy, Prescription, Refill, Role, StockItem, VerificationStatus } from "@/lib/types";
 
 /** A person as the dashboards see them. `identifier` (email/phone) is only sent to admins. */
 export interface DashUser {
@@ -22,5 +22,12 @@ export interface DashboardData {
   prescriptions: Prescription[];
   orders: Order[];
   refills: Refill[];
+  /** Patient: verified doctors. Doctor: own profile (empty until set up). Admin: all. */
+  doctorProfiles: DoctorProfile[];
+  appointments: Appointment[];
+  /** Doctor: medicines waiting for their review. Pharmacist: their own proposals that are pending or rejected. */
+  pendingMedicines: Medicine[];
+  /** Taken slots, so booking forms hide them. */
+  busy: BusySlot[];
   interactionCount: number;
 }

@@ -8,7 +8,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -17,6 +16,7 @@ import { useDashboardData } from "@/components/dashboard/data-provider";
 import { confirmAction, EmptyState, Notice, OrdersTable, selectClass, useFeedback } from "@/components/dashboard/shared";
 import { Welcome } from "@/components/dashboard/welcome";
 import { CITIES, formatBDT } from "@/lib/constants";
+import { isMedicineLive } from "@/lib/rules";
 import type { Medicine, Pharmacy, VerificationStatus } from "@/lib/types";
 
 function Decision({ onDecide }: { onDecide: (s: VerificationStatus) => void }) {
@@ -41,12 +41,14 @@ export function AdminOverview() {
   const pendingPharmacies = d.pharmacies.filter((p) => p.status === "pending").length;
   const pending = pendingPeople + pendingPharmacies;
   const live = d.orders.filter((o) => o.status !== "cancelled");
+  const liveMedicines = d.medicines.filter(isMedicineLive);
+  const awaiting = d.medicines.filter((m) => m.review?.status === "pending");
 
   return (
     <div className="space-y-6">
       <Welcome blurb="Verify doctors and pharmacies, manage the medicine database and keep orders in check." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Medicines" value={d.medicines.length} icon={Pill} hint={`${d.medicines.filter((m) => m.rare).length} rare`} />
+        <StatCard label="Live medicines" value={liveMedicines.length} icon={Pill} hint={awaiting.length ? `${awaiting.length} awaiting doctor review` : `${liveMedicines.filter((m) => m.rare).length} rare`} />
         <StatCard label="Verified pharmacies" value={d.pharmacies.filter((p) => p.status === "verified").length} icon={Store} />
         <StatCard label="Verified doctors" value={d.users.filter((u) => u.role === "doctor" && u.status === "verified").length} icon={Users} />
         <StatCard label="Patients" value={d.users.filter((u) => u.role === "patient").length} icon={Users} />
@@ -65,6 +67,14 @@ export function AdminOverview() {
               : `${pendingPeople} doctor / pharmacist and ${pendingPharmacies} pharmacy registration${pending === 1 ? " is" : "s are"} waiting for review.`}
           </p>
           <Link href="/admin/verifications" className={buttonVariants({ size: "sm" })}>Review</Link>
+        </CardContent>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm">
+          <p>
+            {awaiting.length === 0
+              ? "No medicine is waiting for a doctor."
+              : `${awaiting.length} medicine${awaiting.length === 1 ? " is" : "s are"} waiting for a verified doctor. ${awaiting.length === 1 ? "It goes" : "They go"} live after approval.`}
+          </p>
+          <Link href="/admin/medicines" className={buttonVariants({ size: "sm", variant: "outline" })}>Medicine database</Link>
         </CardContent>
       </Card>
 
@@ -319,7 +329,6 @@ function MedicineForm({ medicine, onDone, onCancel }: { medicine?: Medicine; onD
     const r = await run(medicine ? "PATCH" : "POST", medicine ? `/api/medicines/${medicine.id}` : "/api/medicines", {
       brand: text("brand"), generic: text("generic"), strength: text("strength"), form: text("form"),
       manufacturer: text("manufacturer"), category: text("category"), price: Number(f.get("price")),
-      description: text("description"), uses: text("uses"), cautions: text("cautions"), sideEffects: text("sideEffects"),
       ingredients: text("ingredients"), rx: f.get("rx") === "on", rare: f.get("rare") === "on",
     });
     setBusy(false);
@@ -328,8 +337,6 @@ function MedicineForm({ medicine, onDone, onCancel }: { medicine?: Medicine; onD
     form.reset();
     onDone(`${text("brand")} ${text("strength")}`);
   }
-
-  const lines = (a?: string[]) => a?.join("\n") ?? "";
 
   return (
     <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -346,20 +353,48 @@ function MedicineForm({ medicine, onDone, onCancel }: { medicine?: Medicine; onD
         <div className="space-y-1.5"><Label htmlFor="price">Price (৳)</Label><Input id="price" name="price" type="number" min={0} defaultValue={medicine?.price} required /></div>
         <div className="space-y-1.5"><Label htmlFor="ingredients">Ingredients</Label><Input id="ingredients" name="ingredients" placeholder="comma or new line" defaultValue={medicine?.ingredients.join(", ")} /></div>
       </div>
-      <div className="space-y-1.5"><Label htmlFor="description">Description</Label><Textarea id="description" name="description" defaultValue={medicine?.description} required /></div>
-      <div className="space-y-1.5"><Label htmlFor="uses">Uses (one per line)</Label><Textarea id="uses" name="uses" defaultValue={lines(medicine?.uses)} /></div>
-      <div className="space-y-1.5"><Label htmlFor="cautions">Cautions (one per line) — shown in AI caution cards</Label><Textarea id="cautions" name="cautions" defaultValue={lines(medicine?.cautions)} /></div>
-      <div className="space-y-1.5"><Label htmlFor="sideEffects">Side effects (one per line)</Label><Textarea id="sideEffects" name="sideEffects" defaultValue={lines(medicine?.sideEffects)} /></div>
+      <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+        A verified doctor adds the description, uses, cautions, side effects and interactions. The medicine goes live only after a doctor approves it.
+        {medicine && isMedicineLive(medicine) && " Changing generic, ingredients, strength, form or Rx sends it back for review and takes it off sale until approved."}
+        {medicine?.review?.status === "rejected" && " Saving sends it for review again."}
+      </p>
       <div className="flex gap-4 text-sm">
         <label className="flex items-center gap-1.5"><input type="checkbox" name="rx" defaultChecked={medicine?.rx} /> Rx only</label>
         <label className="flex items-center gap-1.5"><input type="checkbox" name="rare" defaultChecked={medicine?.rare} /> Rare</label>
       </div>
       {error && <Notice kind="err">{error}</Notice>}
       <div className="flex gap-2">
-        <Button type="submit" className="flex-1" disabled={busy}>{busy ? "Saving…" : medicine ? "Save changes" : "Add to database"}</Button>
+        <Button type="submit" className="flex-1" disabled={busy}>{busy ? "Saving…" : medicine ? "Save changes" : "Add and send for review"}</Button>
         {onCancel && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}
       </div>
     </form>
+  );
+}
+
+/** Shows whether a medicine is live, waiting for a doctor, or rejected (with the reason). */
+function ReviewBadge({ medicine, reviewer }: { medicine: Medicine; reviewer?: string }) {
+  const r = medicine.review;
+  if (!r || r.status === "approved") {
+    return (
+      <div>
+        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" variant="secondary">Live</Badge>
+        {reviewer && <p className="mt-1 text-xs text-muted-foreground">{reviewer}, {r?.reviewedAt}</p>}
+      </div>
+    );
+  }
+  if (r.status === "pending") {
+    return (
+      <div>
+        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" variant="secondary">Awaiting doctor</Badge>
+        {r.note && <p className="mt-1 text-xs text-muted-foreground">{r.note}</p>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <Badge className="bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" variant="secondary">Rejected</Badge>
+      <p className="mt-1 text-xs text-muted-foreground">{reviewer ? `${reviewer}: ` : ""}{r.note}</p>
+    </div>
   );
 }
 
@@ -380,16 +415,16 @@ export function AdminMedicines() {
 
   return (
     <>
-      <PageHeader title="Medicine database" description="The curated source the AI caution layer retrieves from. Keep cautions accurate." />
+      <PageHeader title="Medicine database" description="Add a medicine with its basic details. It goes live after a verified doctor reviews it and supplies the cautions the AI layer uses." />
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           {node}
           <Input className="h-10 max-w-sm" placeholder="Search medicines…" aria-label="Search medicines" value={query} onChange={(e) => setQuery(e.target.value)} />
           <Card>
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead>Brand</TableHead><TableHead>Generic</TableHead><TableHead>Category</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead className="text-right">Actions</TableHead></TableRow>
+                  <TableRow><TableHead>Brand</TableHead><TableHead>Generic</TableHead><TableHead>Category</TableHead><TableHead>Type</TableHead><TableHead>Price</TableHead><TableHead>Doctor review</TableHead><TableHead className="text-right">Actions</TableHead></TableRow>
                 </TableHeader>
                 <TableBody>
                   {shown.map((m) => (
@@ -399,6 +434,7 @@ export function AdminMedicines() {
                       <TableCell>{m.category}</TableCell>
                       <TableCell className="space-x-1"><RxBadge rx={m.rx} />{m.rare && <Badge variant="outline">Rare</Badge>}</TableCell>
                       <TableCell>{formatBDT(m.price)}</TableCell>
+                      <TableCell className="whitespace-normal"><ReviewBadge medicine={m} reviewer={d.users.find((u) => u.id === m.review?.reviewedBy)?.name} /></TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => setEditing(m)}><Pencil /> Edit</Button>

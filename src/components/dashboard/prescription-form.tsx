@@ -16,7 +16,7 @@ type Row = { medicineId: string; dose: string; days: string };
 const blank = (): Row => ({ medicineId: "", dose: "", days: "" });
 
 type Props =
-  | { mode: "issue"; patients: DashUser[]; onDone: () => void }
+  | { mode: "issue"; patients: DashUser[]; onDone: () => void; defaultPatientId?: string; appointmentId?: string }
   | { mode: "edit"; rx: Prescription; onDone: () => void; onCancel: () => void }
   | { mode: "upload"; onDone: () => void };
 
@@ -30,7 +30,10 @@ export function PrescriptionForm(props: Props) {
   const isEdit = props.mode === "edit";
   const rx = props.mode === "edit" ? props.rx : null;
 
-  const [patientId, setPatientId] = useState(props.mode === "issue" ? (props.patients[0]?.id ?? "") : "");
+  const [patientId, setPatientId] = useState(() => {
+    if (props.mode !== "issue") return "";
+    return props.patients.find((p) => p.id === props.defaultPatientId)?.id ?? props.patients[0]?.id ?? "";
+  });
   const [diagnosis, setDiagnosis] = useState(rx?.diagnosis ?? "");
   const [doctorName, setDoctorName] = useState("");
   const [issuedAt, setIssuedAt] = useState(today());
@@ -58,7 +61,7 @@ export function PrescriptionForm(props: Props) {
     setBusy(true);
     const result = rx
       ? await run("PATCH", `/api/prescriptions/${rx.id}`, { diagnosis, items, validUntil })
-      : await run("POST", "/api/prescriptions", isUpload ? { diagnosis, items, issuedAt, fileName, doctorName } : { patientId, diagnosis, items });
+      : await run("POST", "/api/prescriptions", isUpload ? { diagnosis, items, issuedAt, fileName, doctorName } : { patientId, diagnosis, items, appointmentId: props.mode === "issue" ? props.appointmentId : undefined });
     setBusy(false);
     if (!result.ok) return setError(result.error);
     props.onDone();
@@ -71,7 +74,7 @@ export function PrescriptionForm(props: Props) {
           <div className="space-y-1.5">
             <Label htmlFor="patientId">Patient</Label>
             <select id="patientId" className={selectClass} value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-              {props.patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.city ? ` — ${p.city}` : ""}</option>)}
+              {props.patients.map((p) => <option key={p.id} value={p.id} disabled={Boolean(props.appointmentId) && p.id !== patientId}>{p.name}{p.city ? ` — ${p.city}` : ""}</option>)}
             </select>
           </div>
         )}

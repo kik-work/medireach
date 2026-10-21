@@ -4,6 +4,11 @@ import { cn } from "@/lib/utils";
 const TONE: Record<string, string> = {
   verified: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
   delivered: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  approved: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  completed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  requested: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  rescheduled: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+  declined: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
   confirmed: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
   packed: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
   placed: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",

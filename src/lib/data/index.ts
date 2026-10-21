@@ -8,6 +8,10 @@ import { prescriptions } from "./prescriptions";
 import { orders } from "./orders";
 import { refills } from "./refills";
 import { interactions } from "./interactions";
+import { doctorProfiles } from "./doctors";
+import { appointments } from "./appointments";
+import { messages } from "./messages";
+import { reports } from "./reports";
 import { seedPasswords } from "./accounts";
 import { hashPassword } from "@/lib/password";
 
@@ -32,6 +36,10 @@ const seed = () => ({
   orders: structuredClone(orders),
   refills: structuredClone(refills),
   interactions: structuredClone(interactions),
+  doctorProfiles: structuredClone(doctorProfiles),
+  appointments: structuredClone(appointments),
+  messages: structuredClone(messages),
+  reports: structuredClone(reports),
 });
 
 export type Db = ReturnType<typeof seed>;
@@ -45,7 +53,14 @@ function load(): Db {
   try {
     const saved = JSON.parse(fs.readFileSync(FILE, "utf8")) as Partial<Db>;
     // Fill any collection added after the file was written.
-    return { ...seed(), ...saved, accounts: saved.accounts ?? seedAccounts() };
+    const merged = { ...seed(), ...saved, accounts: saved.accounts ?? seedAccounts() };
+    // Add seeded doctors that an older file does not have yet.
+    for (const u of users) {
+      if (u.role !== "doctor" || merged.users.some((x) => x.id === u.id)) continue;
+      merged.users.push(structuredClone(u));
+      merged.accounts.push({ userId: u.id, passwordHash: hashPassword(seedPasswords[u.id] ?? "changeme") });
+    }
+    return merged;
   } catch {
     const fresh = { ...seed(), accounts: seedAccounts() };
     write(fresh);

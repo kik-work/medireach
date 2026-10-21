@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { guard, readJson } from "@/lib/auth";
 import { cleanMedicine } from "@/lib/medicine-input";
-import { addMedicine, listMedicines } from "@/lib/services/medicine.service";
+import { addMedicine, listMedicines, submitMedicine } from "@/lib/services/medicine.service";
 
-/** GET /api/medicines?q=&category=&rx=rx|otc&rare=1 */
+/** GET /api/medicines?q=&category=&rx=rx|otc&rare=1 — live (doctor-approved) medicines only. */
 export function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
   const rx = p.get("rx");
@@ -16,11 +16,17 @@ export function GET(req: NextRequest) {
   return NextResponse.json({ count: data.length, data });
 }
 
-/** POST /api/medicines — admin adds a medicine to the curated database. */
+/**
+ * POST /api/medicines — an admin or a verified pharmacist adds a medicine.
+ * It stays hidden until a verified doctor reviews and approves it. A pharmacist's proposal is tied to their account.
+ */
 export async function POST(req: Request) {
-  const { res } = await guard("admin");
+  const { user, res } = await guard("admin", "pharmacist");
   if (res) return res;
   const input = cleanMedicine(await readJson(req));
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: 422 });
-  return NextResponse.json({ data: addMedicine(input.value) }, { status: 201 });
+  if (user.role === "admin") return NextResponse.json({ data: addMedicine(input.value) }, { status: 201 });
+  const result = submitMedicine(user, input.value);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  return NextResponse.json({ data: result.value }, { status: 201 });
 }

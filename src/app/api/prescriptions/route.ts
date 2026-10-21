@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard, readJson } from "@/lib/auth";
 import { db } from "@/lib/data";
+import { getAppointment } from "@/lib/services/appointment.service";
 import { cleanItems, createPrescription, listForDoctor, listForPatient } from "@/lib/services/prescription.service";
 
 /** GET /api/prescriptions — prescriptions of the signed-in patient (issued + uploaded) or doctor (issued). */
@@ -18,6 +19,7 @@ interface Body {
   issuedAt?: string;
   fileName?: string;
   doctorName?: string;
+  appointmentId?: string;
 }
 
 /**
@@ -36,7 +38,12 @@ export async function POST(req: Request) {
     if (user.status !== "verified") return NextResponse.json({ error: "Your registration must be verified before you can issue prescriptions." }, { status: 403 });
     const patient = db.users.find((u) => u.id === body.patientId && u.role === "patient" && u.status === "verified");
     if (!patient) return NextResponse.json({ error: "Choose a registered patient." }, { status: 422 });
-    const rx = createPrescription({ doctorId: user.id, patientId: patient.id, diagnosis: String(body.diagnosis ?? ""), items });
+    // Optional link to the consultation this prescription was written in.
+    const appointment = body.appointmentId ? getAppointment(body.appointmentId) : undefined;
+    if (body.appointmentId && (appointment?.doctorId !== user.id || appointment.patientId !== patient.id)) {
+      return NextResponse.json({ error: "That appointment does not match this doctor and patient." }, { status: 422 });
+    }
+    const rx = createPrescription({ doctorId: user.id, patientId: patient.id, diagnosis: String(body.diagnosis ?? ""), items, appointmentId: appointment?.id });
     return NextResponse.json({ data: rx }, { status: 201 });
   }
 

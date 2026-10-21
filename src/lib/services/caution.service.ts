@@ -1,5 +1,6 @@
 import { db } from "@/lib/data";
 import { AI_DISCLAIMER } from "@/lib/constants";
+import { isMedicineLive } from "@/lib/rules";
 import type { CautionReport } from "@/lib/types";
 
 /**
@@ -9,7 +10,7 @@ import type { CautionReport } from "@/lib/types";
  */
 export function buildCautionReport(medicineIds: string[]): CautionReport {
   const meds = [...new Set(medicineIds)]
-    .map((id) => db.medicines.find((m) => m.id === id))
+    .map((id) => db.medicines.find((m) => m.id === id && isMedicineLive(m)))
     .filter((m): m is NonNullable<typeof m> => Boolean(m));
 
   // Duplicate active ingredients across different brands.

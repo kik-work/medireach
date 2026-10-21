@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { useDashboardData } from "@/components/dashboard/data-provider";
 import { confirmAction, EmptyState, PrescriptionList, useFeedback } from "@/components/dashboard/shared";
 import { PrescriptionForm } from "@/components/dashboard/prescription-form";
+import { VisitSummary } from "@/components/consult/visit-summary";
 import { Welcome } from "@/components/dashboard/welcome";
 import { today } from "@/lib/rules";
 
@@ -47,6 +48,8 @@ export function DoctorOverview() {
   const d = useDoctor();
   const verified = d.status === "verified";
   const valid = d.prescriptions.filter((r) => r.validUntil >= today()).length;
+  const requests = d.appointments.filter((a) => a.status === "requested").length;
+  const medicineReviews = d.pendingMedicines.length;
   return (
     <div className="space-y-6">
       <Welcome
@@ -54,6 +57,24 @@ export function DoctorOverview() {
         actions={verified && <Link href="/doctor/prescriptions/new" className={buttonVariants({ variant: "secondary" })}>New prescription</Link>}
       />
       <VerificationNotice status={d.status} />
+
+      {requests > 0 && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p>{requests} appointment request{requests > 1 ? "s" : ""} waiting for your answer.</p>
+            <Link href="/doctor/appointments" className={buttonVariants({ size: "sm" })}>Review requests</Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {verified && medicineReviews > 0 && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p>{medicineReviews} medicine{medicineReviews > 1 ? "s are" : " is"} waiting for your review before going live.</p>
+            <Link href="/doctor/medicines" className={buttonVariants({ size: "sm" })}>Review medicines</Link>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Prescriptions issued" value={d.prescriptions.length} icon={FileText} hint={`${valid} still valid`} />
@@ -78,14 +99,16 @@ export function DoctorOverview() {
   );
 }
 
-export function DoctorNewPrescription() {
+export function DoctorNewPrescription({ patientId, appointmentId }: { patientId?: string; appointmentId?: string }) {
   const router = useRouter();
   const d = useDoctor();
   const verified = d.status === "verified";
+  // Written from a consultation room: the prescription is linked to that appointment and patient.
+  const appointment = d.appointments.find((a) => a.id === appointmentId && a.patientId === patientId);
   return (
     <>
       <PageHeader title="New prescription" description="Prescribed medicines become purchasable for the patient. Valid for 30 days." />
-      <div className="space-y-4">
+      <div className={appointment && verified ? "grid gap-6 xl:grid-cols-[1fr_380px]" : "space-y-4"}>
         <VerificationNotice status={d.status} />
         {verified && (
           <Card className="max-w-3xl">
@@ -93,11 +116,18 @@ export function DoctorNewPrescription() {
               {d.patients.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No patients are registered yet.</p>
               ) : (
-                <PrescriptionForm mode="issue" patients={d.patients} onDone={() => router.push("/doctor/prescriptions")} />
+                <PrescriptionForm
+                  mode="issue"
+                  patients={d.patients}
+                  defaultPatientId={appointment?.patientId}
+                  appointmentId={appointment?.id}
+                  onDone={() => router.push(appointment ? `/doctor/appointments/${appointment.id}` : "/doctor/prescriptions")}
+                />
               )}
             </CardContent>
           </Card>
         )}
+        {verified && appointment && <VisitSummary appointment={appointment} />}
       </div>
     </>
   );

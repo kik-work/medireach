@@ -1,4 +1,4 @@
-import type { Prescription } from "@/lib/types";
+import type { Medicine, Prescription } from "@/lib/types";
 
 /** Date and prescription rules shared by the server and the dashboards. */
 export const VALID_DAYS = 30;
@@ -10,6 +10,9 @@ export function addDays(isoDate: string, days: number) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** A medicine is live (listed, orderable, prescribable) once a verified doctor approved it. */
+export const isMedicineLive = (m: Pick<Medicine, "review">) => !m.review || m.review.status === "approved";
 
 export const isPrescriptionValid = (rx: Prescription) => rx.validUntil >= today();
 

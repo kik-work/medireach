@@ -1,4 +1,5 @@
 import { db } from "@/lib/data";
+import { isMedicineLive } from "@/lib/rules";
 import type { Medicine, Order, Pharmacy, Prescription, StockItem, User } from "@/lib/types";
 
 /** Reference + starter data the dashboards start from. Mutations live in the browser (see dashboard-store). */
@@ -12,7 +13,7 @@ export interface DashboardSeed {
 }
 
 export const getDashboardSeed = (): DashboardSeed => ({
-  medicines: db.medicines,
+  medicines: db.medicines.filter(isMedicineLive),
   pharmacies: db.pharmacies,
   stock: db.stock,
   users: db.users.filter((u) => u.role !== "admin"),

@@ -112,7 +112,7 @@ export default function HomePage() {
 
   const exampleIds = ["m01", "m02", "m12", "m10"];
   const example = buildCautionReport(exampleIds);
-  const exampleMeds = exampleIds.map((id) => getMedicineById(id)!);
+  const exampleMeds = exampleIds.flatMap((id) => getMedicineById(id) ?? []);
 
   return (
     <div className="space-y-28 lg:space-y-40">

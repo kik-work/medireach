@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, Package, PackageX, Pill, Plus, Save, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Package, PackageX, Pencil, Pill, Plus, Save, Send, Trash2, Wallet } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
-import { StatusBadge } from "@/components/shared/status-badge";
+import { RxBadge, StatusBadge } from "@/components/shared/status-badge";
 import { useDashboardData } from "@/components/dashboard/data-provider";
-import { confirmAction, EmptyState, OrdersTable, selectClass, useFeedback } from "@/components/dashboard/shared";
+import { confirmAction, EmptyState, Notice, OrdersTable, selectClass, useFeedback } from "@/components/dashboard/shared";
 import { Welcome } from "@/components/dashboard/welcome";
 import { CITIES, formatBDT } from "@/lib/constants";
 import { isPrescriptionValid } from "@/lib/rules";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus, StockItem } from "@/lib/types";
+import type { Medicine, Order, OrderStatus, StockItem } from "@/lib/types";
 
 const OPEN = ["placed", "confirmed", "packed", "pre-order"];
 const LOW_STOCK = 10;
@@ -111,9 +111,62 @@ function StockRow({ item, name, sub, onSave, onRemove }: { item: StockItem; name
   );
 }
 
+/** Identity, price and type only. The reviewing doctor adds description, uses, cautions and interactions. */
+function ProposalForm({ medicine, onDone, onCancel }: { medicine?: Medicine; onDone: (label: string) => void; onCancel?: () => void }) {
+  const { run } = useDashboardData();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const f = new FormData(form);
+    const text = (k: string) => String(f.get(k) ?? "").trim();
+    setBusy(true);
+    const r = await run(medicine ? "PATCH" : "POST", medicine ? `/api/medicines/${medicine.id}` : "/api/medicines", {
+      brand: text("brand"), generic: text("generic"), strength: text("strength"), form: text("form"),
+      manufacturer: text("manufacturer"), category: text("category"), price: Number(f.get("price")),
+      ingredients: text("ingredients"), rx: f.get("rx") === "on", rare: f.get("rare") === "on",
+    });
+    setBusy(false);
+    if (!r.ok) return setError(r.error);
+    setError(null);
+    form.reset();
+    onDone(`${text("brand")} ${text("strength")}`);
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3" noValidate>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5"><Label htmlFor="pm-brand">Brand</Label><Input id="pm-brand" name="brand" defaultValue={medicine?.brand} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="pm-generic">Generic</Label><Input id="pm-generic" name="generic" defaultValue={medicine?.generic} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="pm-strength">Strength</Label><Input id="pm-strength" name="strength" placeholder="500 mg" defaultValue={medicine?.strength} required /></div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pm-form">Form</Label>
+          <select id="pm-form" name="form" className={selectClass} defaultValue={medicine?.form}>{["Tablet", "Capsule", "Syrup", "Injection"].map((f) => <option key={f}>{f}</option>)}</select>
+        </div>
+        <div className="space-y-1.5"><Label htmlFor="pm-maker">Manufacturer</Label><Input id="pm-maker" name="manufacturer" defaultValue={medicine?.manufacturer} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="pm-category">Category</Label><Input id="pm-category" name="category" defaultValue={medicine?.category} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="pm-price">Price (৳)</Label><Input id="pm-price" name="price" type="number" min={0} defaultValue={medicine?.price} required /></div>
+        <div className="space-y-1.5"><Label htmlFor="pm-ingredients">Ingredients</Label><Input id="pm-ingredients" name="ingredients" placeholder="comma separated" defaultValue={medicine?.ingredients.join(", ")} /></div>
+      </div>
+      <div className="flex gap-4 text-sm">
+        <label className="flex items-center gap-1.5"><input type="checkbox" name="rx" defaultChecked={medicine?.rx} /> Rx only</label>
+        <label className="flex items-center gap-1.5"><input type="checkbox" name="rare" defaultChecked={medicine?.rare} /> Rare</label>
+      </div>
+      {error && <Notice kind="err">{error}</Notice>}
+      <div className="flex gap-2">
+        <Button type="submit" className="flex-1" disabled={busy}><Send /> {busy ? "Sending…" : medicine ? "Send again" : "Send for doctor review"}</Button>
+        {onCancel && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}
+      </div>
+    </form>
+  );
+}
+
 export function PharmacistInventory() {
   const d = usePharmacist();
-  const { done, node } = useFeedback();
+  const { done, show, node } = useFeedback();
+  const [editing, setEditing] = useState<Medicine | null>(null);
   const [query, setQuery] = useState("");
   const [medicineId, setMedicineId] = useState("");
   const [qty, setQty] = useState("");
@@ -171,30 +224,85 @@ export function PharmacistInventory() {
                 </CardContent>
               </Card>
             )}
+
+            {d.pendingMedicines.length > 0 && (
+              <section className="space-y-2 pt-3">
+                <h2 className="font-semibold">Your proposed medicines</h2>
+                <Card>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow><TableHead>Medicine</TableHead><TableHead>Status</TableHead><TableHead>Doctor&apos;s note</TableHead><TableHead className="text-right">Actions</TableHead></TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {d.pendingMedicines.map((m) => (
+                          <TableRow key={m.id} className={editing?.id === m.id ? "bg-muted/50" : undefined}>
+                            <TableCell className="font-medium">
+                              {m.brand} {m.strength}
+                              <div className="space-x-1 text-xs font-normal text-muted-foreground">{m.generic} · {m.form} <RxBadge rx={m.rx} /></div>
+                            </TableCell>
+                            <TableCell><StatusBadge status={m.review?.status ?? "pending"} /></TableCell>
+                            <TableCell className="max-w-64 whitespace-normal text-sm text-muted-foreground">
+                              {m.review?.status === "rejected" ? m.review.note : "Waiting for a verified doctor. It cannot be stocked until approved."}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {m.review?.status === "rejected" && <Button size="sm" variant="outline" onClick={() => setEditing(m)}><Pencil /> Fix &amp; resend</Button>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </section>
+            )}
           </div>
 
-          <Card className="h-fit">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Plus className="size-4 text-primary" /> Add listing</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={add} className="space-y-3" noValidate>
-                <div className="space-y-1.5">
-                  <Label htmlFor="st-med">Medicine</Label>
-                  <select
-                    id="st-med" className={selectClass} value={medicineId}
-                    onChange={(e) => { setMedicineId(e.target.value); setPrice(String(d.medicines.find((m) => m.id === e.target.value)?.price ?? "")); }}
-                  >
-                    <option value="">{unlisted.length ? "Select medicine…" : "Everything is already listed"}</option>
-                    {unlisted.map((m) => <option key={m.id} value={m.id}>{m.brand} {m.strength} — {m.generic}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5"><Label htmlFor="st-qty">Quantity</Label><Input id="st-qty" type="number" min={0} className="h-10" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
-                  <div className="space-y-1.5"><Label htmlFor="st-price">Price (৳)</Label><Input id="st-price" type="number" min={0} className="h-10" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
-                </div>
-                <Button type="submit" className="h-10 w-full" disabled={!medicineId || qty === "" || price === ""}>Add to inventory</Button>
-              </form>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <Card className="h-fit">
+              <CardHeader><CardTitle className="flex items-center gap-2"><Plus className="size-4 text-primary" /> Add listing</CardTitle></CardHeader>
+              <CardContent>
+                <form onSubmit={add} className="space-y-3" noValidate>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="st-med">Medicine</Label>
+                    <select
+                      id="st-med" className={selectClass} value={medicineId}
+                      onChange={(e) => { setMedicineId(e.target.value); setPrice(String(d.medicines.find((m) => m.id === e.target.value)?.price ?? "")); }}
+                    >
+                      <option value="">{unlisted.length ? "Select medicine…" : "Everything is already listed"}</option>
+                      {unlisted.map((m) => <option key={m.id} value={m.id}>{m.brand} {m.strength} — {m.generic}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5"><Label htmlFor="st-qty">Quantity</Label><Input id="st-qty" type="number" min={0} className="h-10" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label htmlFor="st-price">Price (৳)</Label><Input id="st-price" type="number" min={0} className="h-10" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
+                  </div>
+                  <Button type="submit" className="h-10 w-full" disabled={!medicineId || qty === "" || price === ""}>Add to inventory</Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="h-fit">
+              <CardHeader><CardTitle className="flex items-center gap-2"><Pill className="size-4 text-primary" /> {editing ? `Fix ${editing.brand}` : "Medicine not listed?"}</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {d.me.status !== "verified" ? (
+                  <p className="text-sm text-muted-foreground">You can propose a new medicine once an admin verifies your registration.</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Send it for review. A verified doctor adds the clinical details and approves it. After that it appears in the list above and you can stock it.
+                    </p>
+                    <ProposalForm
+                      key={editing?.id ?? "new"}
+                      medicine={editing ?? undefined}
+                      onCancel={editing ? () => setEditing(null) : undefined}
+                      onDone={(label) => { show("ok", `${label} sent for doctor review.`); setEditing(null); }}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </>

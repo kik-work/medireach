@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Package, Pause, Pill, Play, Repeat, Search, ShieldCheck, ShoppingCart, Sparkles, Trash2, Upload, XCircle } from "lucide-react";
+import { FileText, Package, Pause, Pill, Play, Repeat, Search, ShieldCheck, ShoppingCart, Sparkles, Stethoscope, Trash2, Upload, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { confirmAction, EmptyState, OrderTracker, OrdersTable, PrescriptionList,
 import { PrescriptionForm } from "@/components/dashboard/prescription-form";
 import { Welcome } from "@/components/dashboard/welcome";
 import { formatBDT } from "@/lib/constants";
+import { formatDay, isLive } from "@/lib/consult";
 import { addDays, isPrescriptionValid, today } from "@/lib/rules";
 import { cn } from "@/lib/utils";
 import type { Prescription } from "@/lib/types";
@@ -25,6 +26,7 @@ import type { Prescription } from "@/lib/types";
 const IN_PROGRESS = ["placed", "confirmed", "packed", "pre-order"];
 
 const actions = [
+  { href: "/patient/doctors", label: "Find a doctor", text: "Describe your problem, then book a video or chat visit.", icon: Stethoscope },
   { href: "/medicines", label: "Find a medicine", text: "Search by brand, generic or condition and see who stocks it.", icon: Search },
   { href: "/medicines?rare=1", label: "Rare medicines", text: "Hard-to-find medicines listed nationwide.", icon: Sparkles },
   { href: "/patient/prescriptions", label: "Upload prescription", text: "Add a paper prescription to unlock Rx-only medicines.", icon: Upload },
@@ -32,7 +34,8 @@ const actions = [
 ];
 
 export function PatientOverview() {
-  const { prescriptions, orders, refills, medicines } = useDashboardData();
+  const { prescriptions, orders, refills, medicines, appointments, users } = useDashboardData();
+  const nextVisit = appointments.filter(isLive).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))[0];
   const active = prescriptions.filter(isPrescriptionValid);
   const dueSoon = refills.filter((r) => r.active && r.nextDate <= addDays(today(), 7));
   return (
@@ -58,7 +61,16 @@ export function PatientOverview() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {nextVisit && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p>Next consultation: {users.find((u) => u.id === nextVisit.doctorId)?.name ?? "your doctor"} · {formatDay(nextVisit.date)} at {nextVisit.time}.</p>
+            <Link href={`/patient/appointments/${nextVisit.id}`} className={buttonVariants({ size: "sm" })}>Open consultation</Link>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {actions.map(({ href, label, text, icon: Icon }) => (
           <Link key={href} href={href} className="group rounded-xl border bg-card p-4 transition hover:border-primary/50 hover:shadow-sm">
             <span className="mb-3 flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="size-4" /></span>
