@@ -14,17 +14,17 @@ const links = [
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
-      <div className={`${CONTAINER} flex h-16 items-center gap-6`}>
+      <div className={`${CONTAINER} flex h-16 items-center gap-2 sm:gap-6`}>
         <Link href="/" className="flex items-center gap-2 font-semibold">
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Pill className="size-4" /></span>
           {APP_NAME}
         </Link>
-        <nav className="hidden gap-7 text-sm font-medium text-muted-foreground sm:flex">
+        <nav className="hidden gap-7 text-sm font-medium text-muted-foreground md:flex">
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="hover:text-foreground">{l.label}</Link>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <MobileNav links={links} />
           <CartLink />
           <HeaderAuth />

@@ -7,9 +7,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CautionPanel } from "@/components/caution/caution-panel";
 import { RxBadge } from "@/components/shared/status-badge";
-import { formatBDT } from "@/lib/constants";
+import { formatBDT, PAYMENT_LABEL } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import type { CautionReport, Order, Prescription } from "@/lib/types";
+import type { CautionReport, Order, PaymentMethod, Prescription } from "@/lib/types";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { prescribedMedicineIds } from "@/lib/rules";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -37,6 +38,10 @@ export function CartView() {
   const [error, setError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<string[] | null>(null);
   const [preOrder, setPreOrder] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod>("cod");
+  const [account, setAccount] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [paidRef, setPaidRef] = useState<string[]>([]);
 
   const medicineKey = [...new Set(lines.map((l) => l.medicineId))].sort().join(",");
 
@@ -61,11 +66,15 @@ export function CartView() {
     setPlacing(true);
     const r = await api<Order[]>("POST", "/api/orders", {
       lines: lines.map((l) => ({ medicineId: l.medicineId, pharmacyId: l.pharmacyId, quantity: l.quantity })),
+      payment: { method, account, expiry },
     });
     setPlacing(false);
     if (!r.ok) return setError(r.blocked?.length ? `${r.error} (${r.blocked.join(", ")})` : r.error);
     setPlaced(r.data.map((o) => o.id));
     setPreOrder(r.data.some((o) => o.status === "pre-order"));
+    setPaidRef(r.data.flatMap((o) => (o.payment?.status === "paid" && o.payment.ref ? [o.payment.ref] : [])));
+    setAccount("");
+    setExpiry("");
     clear();
   }
 
@@ -75,7 +84,7 @@ export function CartView() {
         <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
           <CheckCircle2 className="size-10 text-primary" />
           <h2 className="text-lg font-semibold">Order placed</h2>
-          <p className="text-sm text-muted-foreground">Reference: {placed.join(", ")}. Pay on delivery.{preOrder && " Some items are out of stock, so that order is a pre-order and the pharmacy will confirm when it arrives."}</p>
+          <p className="text-sm text-muted-foreground">Reference: {placed.join(", ")}. {paidRef.length ? `Paid (simulated), transaction ${paidRef.join(", ")}.` : "Pay on delivery."}{preOrder && " Some items are out of stock, so that order is a pre-order and the pharmacy will confirm when it arrives."}</p>
           <Link href="/patient/orders" className={buttonVariants()}>Track orders</Link>
         </CardContent>
       </Card>
@@ -129,7 +138,6 @@ export function CartView() {
         <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="flex justify-between text-base font-semibold"><span>Total</span><span>{formatBDT(total)}</span></div>
-          <p className="text-xs text-muted-foreground">Payment: cash on delivery.</p>
 
           {!patientName ? (
             <Link href="/login" className={cn(buttonVariants(), "w-full")}>Log in as patient to order</Link>
@@ -141,9 +149,35 @@ export function CartView() {
                   Rx-only items need a valid prescription: {blocked.map((b) => b.brand).join(", ")}. Remove them or ask your doctor to issue one.
                 </p>
               )}
+              <fieldset className="space-y-2">
+                <legend className="mb-1 font-medium">Payment</legend>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["cod", "bkash", "card"] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => { setMethod(m); setAccount(""); setExpiry(""); setError(null); }}
+                      aria-pressed={method === m}
+                      className={cn("rounded-md border px-2 py-1.5 text-xs", method === m ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>
+                      {PAYMENT_LABEL[m]}
+                    </button>
+                  ))}
+                </div>
+                {method === "bkash" && (
+                  <Input inputMode="numeric" value={account} onChange={(e) => setAccount(e.target.value)} placeholder="bKash number, 01XXXXXXXXX" aria-label="bKash number" maxLength={14} />
+                )}
+                {method === "card" && (
+                  <div className="grid grid-cols-[1fr_88px] gap-1.5">
+                    <Input inputMode="numeric" autoComplete="off" value={account} onChange={(e) => setAccount(e.target.value)} placeholder="Card number" aria-label="Card number" maxLength={23} />
+                    <Input autoComplete="off" value={expiry} onChange={(e) => setExpiry(e.target.value)} placeholder="MM/YY" aria-label="Expiry" maxLength={5} />
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {method === "cod"
+                    ? "Pay the pharmacy when the order arrives."
+                    : "Simulated payment: no money moves. Use a test number, e.g. 01712345678 or card 4242 4242 4242 4242. Only the last 4 digits are kept."}
+                </p>
+              </fieldset>
               {error && <p className="text-rose-600">{error}</p>}
               <Button className="w-full" disabled={blocked.length > 0 || placing} onClick={checkout}>
-                {placing ? "Placing…" : "Place order"}
+                {placing ? "Placing…" : method === "cod" ? "Place order" : `Pay ${formatBDT(total)} and place order`}
               </Button>
             </>
           )}

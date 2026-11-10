@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard, readJson } from "@/lib/auth";
 import { getMedicineById } from "@/lib/services/medicine.service";
-import { getInventory, updateStock } from "@/lib/services/pharmacy.service";
+import { getInventory, stockEditError, updateStock } from "@/lib/services/pharmacy.service";
 
 /** GET /api/stock — the pharmacist's own inventory. */
 export async function GET() {
@@ -14,6 +14,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const { user, res } = await guard("pharmacist");
   if (res) return res;
+  const denied = stockEditError(user);
+  if (denied) return NextResponse.json({ error: denied }, { status: 403 });
   if (!user.pharmacyId) return NextResponse.json({ error: "No pharmacy is linked to your account." }, { status: 422 });
   const body = await readJson<{ medicineId?: string; quantity?: number; price?: number }>(req);
   if (!body.medicineId || !getMedicineById(body.medicineId)) return NextResponse.json({ error: "Choose a medicine." }, { status: 422 });

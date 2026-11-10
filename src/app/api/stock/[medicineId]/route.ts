@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/auth";
-import { getPharmacy, removeStock } from "@/lib/services/pharmacy.service";
+import { getPharmacy, removeStock, stockEditError } from "@/lib/services/pharmacy.service";
 
 /**
  * DELETE /api/stock/:medicineId
@@ -11,6 +11,10 @@ export async function DELETE(req: Request, ctx: RouteContext<"/api/stock/[medici
   const { user, res } = await guard("pharmacist", "admin");
   if (res) return res;
   const { medicineId } = await ctx.params;
+  if (user.role === "pharmacist") {
+    const denied = stockEditError(user);
+    if (denied) return NextResponse.json({ error: denied }, { status: 403 });
+  }
   const pharmacyId = user.role === "admin" ? new URL(req.url).searchParams.get("pharmacyId") : user.pharmacyId;
   if (!pharmacyId || !getPharmacy(pharmacyId)) return NextResponse.json({ error: "Pharmacy not found." }, { status: 404 });
   if (!removeStock(pharmacyId, medicineId)) return NextResponse.json({ error: "Listing not found." }, { status: 404 });

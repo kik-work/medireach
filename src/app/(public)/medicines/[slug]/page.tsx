@@ -6,11 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AvailabilityList } from "@/components/medicine/availability-list";
 import { CautionPanel } from "@/components/caution/caution-panel";
 import { RxBadge } from "@/components/shared/status-badge";
-import { CITIES, DEFAULT_CITY, formatBDT } from "@/lib/constants";
+import { NearMeButton } from "@/components/medicine/near-me-button";
+import { CITIES, DEFAULT_CITY, NEARBY_KM, formatBDT } from "@/lib/constants";
+import { parsePoint } from "@/lib/geo";
 import { getMedicineBySlug, sameIngredientBrands } from "@/lib/services/medicine.service";
 import { getUser } from "@/lib/services/user.service";
 import { getAvailability } from "@/lib/services/pharmacy.service";
 import { buildCautionReport } from "@/lib/services/caution.service";
+import { getSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import type { City } from "@/lib/types";
 
@@ -27,8 +30,12 @@ export default async function MedicineDetailPage({ params, searchParams }: PageP
   const cityParam = typeof sp.city === "string" ? (sp.city as City) : DEFAULT_CITY;
   const city = CITIES.includes(cityParam) ? cityParam : DEFAULT_CITY;
 
-  const { nearby, national } = getAvailability(medicine.id, city);
-  const report = buildCautionReport([medicine.id]);
+  const origin = parsePoint(sp.lat, sp.lng);
+  const { mode, nearby, national } = getAvailability(medicine.id, city, origin);
+  const byLocation = mode === "location";
+  // A signed-in patient also gets cautions against the medicines on their profile.
+  const viewer = await getSession();
+  const report = buildCautionReport([medicine.id], { patientId: viewer?.role === "patient" ? viewer.id : undefined });
   const siblings = sameIngredientBrands(medicine);
   const reviewer = medicine.review?.reviewedBy ? getUser(medicine.review.reviewedBy) : undefined;
 
@@ -60,23 +67,26 @@ export default async function MedicineDetailPage({ params, searchParams }: PageP
         <Card>
           <CardHeader>
             <CardTitle>Where to buy</CardTitle>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {CITIES.map((c) => (
-                <Link key={c} href={`/medicines/${medicine.slug}?city=${c}`}
-                  className={cn("rounded-full border px-3 py-1 text-xs", c === city ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>
-                  {c}
-                </Link>
-              ))}
+            <div className="space-y-2 pt-1">
+              <NearMeButton active={byLocation} />
+              <div className="flex flex-wrap gap-1.5">
+                {CITIES.map((c) => (
+                  <Link key={c} href={`/medicines/${medicine.slug}?city=${c}`}
+                    className={cn("rounded-full border px-3 py-1 text-xs", !byLocation && c === city ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>
+                    {c}
+                  </Link>
+                ))}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
             <div>
-              <h3 className="mb-2 text-sm font-semibold">In {city}</h3>
+              <h3 className="mb-2 text-sm font-semibold">{byLocation ? `Within ${NEARBY_KM} km of you` : `In ${city}`}</h3>
               <AvailabilityList medicine={medicine} rows={nearby}
-                emptyText={`Not stocked in ${city}.${national.length ? " See other cities below." : ""}`} />
+                emptyText={`${byLocation ? `No pharmacy within ${NEARBY_KM} km stocks it.` : `Not stocked in ${city}.`}${national.length ? " See further pharmacies below." : ""}`} />
             </div>
             <div>
-              <h3 className="mb-2 text-sm font-semibold">Elsewhere in Bangladesh</h3>
+              <h3 className="mb-2 text-sm font-semibold">{byLocation ? "Further away, nearest first" : "Elsewhere in Bangladesh"}</h3>
               <AvailabilityList medicine={medicine} rows={national} emptyText="No other pharmacy stocks this medicine." />
             </div>
           </CardContent>

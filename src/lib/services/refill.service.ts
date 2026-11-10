@@ -29,13 +29,19 @@ export function createRefill(patientId: string, input: RefillInput): { ok: true;
   return { ok: true, refill };
 }
 
-export function updateRefill(id: string, patch: { quantity?: number; everyDays?: number; pharmacyId?: string; active?: boolean }) {
+export function updateRefill(id: string, patch: { quantity?: number; everyDays?: number; pharmacyId?: string; active?: boolean; autoOrder?: boolean }) {
   const r = getRefill(id);
   if (!r) return undefined;
   if (patch.quantity !== undefined) r.quantity = Math.max(1, Math.floor(Number(patch.quantity)) || r.quantity);
   if (patch.everyDays !== undefined) r.everyDays = Math.min(365, Math.max(1, Math.floor(Number(patch.everyDays)) || r.everyDays));
   if (patch.pharmacyId && getPharmacy(patch.pharmacyId)?.status === "verified") r.pharmacyId = patch.pharmacyId;
   if (typeof patch.active === "boolean") r.active = patch.active;
+  if (typeof patch.autoOrder === "boolean") {
+    r.autoOrder = patch.autoOrder;
+    // A fresh opt-in gets a fresh attempt today.
+    delete r.lastRunAt;
+    delete r.lastError;
+  }
   save();
   return r;
 }
@@ -51,10 +57,52 @@ export function deleteRefill(id: string) {
 export function orderRefillNow(id: string): PlaceOrderResult {
   const r = getRefill(id);
   if (!r) return { ok: false, error: "Refill not found." };
-  const result = placeOrder(r.patientId, [{ medicineId: r.medicineId, pharmacyId: r.pharmacyId, quantity: r.quantity }]);
+  const result = placeOrder(r.patientId, [{ medicineId: r.medicineId, pharmacyId: r.pharmacyId, quantity: r.quantity }], { refillId: r.id });
   if (result.ok) {
     r.nextDate = addDays(today(), r.everyDays);
+    delete r.lastError;
     save();
   }
   return result;
+}
+
+export interface RefillRun {
+  refillId: string;
+  ok: boolean;
+  orderId?: string;
+  error?: string;
+}
+
+/**
+ * Places the orders of due refills that have auto-order switched on (cash on delivery).
+ * Each refill is tried at most once a day: a failure (for example, the prescription for an
+ * Rx medicine expired) is saved in `lastError` and shown to the patient, and tried again the
+ * next day. Suspended patients are skipped.
+ *
+ * Runs from the hourly timer in src/instrumentation.ts and whenever the patient opens
+ * their dashboard, so a due refill is placed even if the server slept through the timer.
+ */
+export function runDueRefills(opts: { patientId?: string; on?: string } = {}): RefillRun[] {
+  const day = opts.on ?? today();
+  const runs: RefillRun[] = [];
+  for (const r of db.refills) {
+    if (!r.active || !r.autoOrder || r.nextDate > day || r.lastRunAt === day) continue;
+    if (opts.patientId && r.patientId !== opts.patientId) continue;
+    const patient = db.users.find((u) => u.id === r.patientId);
+    if (!patient || patient.status !== "verified") continue;
+
+    r.lastRunAt = day;
+    const result = placeOrder(r.patientId, [{ medicineId: r.medicineId, pharmacyId: r.pharmacyId, quantity: r.quantity }], { refillId: r.id });
+    if (result.ok) {
+      r.nextDate = addDays(day, r.everyDays);
+      r.lastOrderId = result.orders[0].id;
+      delete r.lastError;
+      runs.push({ refillId: r.id, ok: true, orderId: r.lastOrderId });
+    } else {
+      r.lastError = result.blocked?.length ? `${result.error} (${result.blocked.join(", ")})` : result.error;
+      runs.push({ refillId: r.id, ok: false, error: r.lastError });
+    }
+  }
+  if (runs.length) save();
+  return runs;
 }

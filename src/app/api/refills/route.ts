@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { guard, readJson } from "@/lib/auth";
-import { createRefill, listRefills, type RefillInput } from "@/lib/services/refill.service";
+import { createRefill, listRefills, runDueRefills, type RefillInput } from "@/lib/services/refill.service";
 
 /** GET /api/refills — the patient's refill subscriptions. */
 export async function GET() {
   const { user, res } = await guard("patient");
   if (res) return res;
+  runDueRefills({ patientId: user.id });
   return NextResponse.json({ data: listRefills(user.id) }, { headers: { "Cache-Control": "no-store" } });
 }
 

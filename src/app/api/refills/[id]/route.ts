@@ -11,7 +11,7 @@ async function ownRefill(id: string) {
   return { refill };
 }
 
-/** PATCH /api/refills/:id { quantity?, everyDays?, pharmacyId?, active? } — edit, pause or resume. */
+/** PATCH /api/refills/:id { quantity?, everyDays?, pharmacyId?, active?, autoOrder? } — edit, pause, resume, or switch automatic ordering on/off. */
 export async function PATCH(req: Request, ctx: RouteContext<"/api/refills/[id]">) {
   const own = await ownRefill((await ctx.params).id);
   if (own.res) return own.res;

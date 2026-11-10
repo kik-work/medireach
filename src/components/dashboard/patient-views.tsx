@@ -14,12 +14,19 @@ import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useCart } from "@/components/cart/cart-provider";
 import { useDashboardData, type DashboardData } from "@/components/dashboard/data-provider";
-import { confirmAction, EmptyState, OrderTracker, OrdersTable, PrescriptionList, selectClass, useFeedback } from "@/components/dashboard/shared";
+import { confirmAction, EmptyState, OrderTracker, OrdersTable, PaymentBadge, PrescriptionList, selectClass, useFeedback } from "@/components/dashboard/shared";
 import { PrescriptionForm } from "@/components/dashboard/prescription-form";
 import { Welcome } from "@/components/dashboard/welcome";
 import { formatBDT } from "@/lib/constants";
 import { formatDay, isLive } from "@/lib/consult";
-import { addDays, isPrescriptionValid, today } from "@/lib/rules";
+import { addDays, isPrescriptionValid, prescriptionState, today, type PrescriptionState } from "@/lib/rules";
+
+const ORDER_LABEL: Record<PrescriptionState, string> = {
+  valid: "Order in one click",
+  expired: "Expired",
+  pending: "Waiting for review",
+  rejected: "Rejected",
+};
 import { cn } from "@/lib/utils";
 import type { Prescription } from "@/lib/types";
 
@@ -161,7 +168,7 @@ export function PatientPrescriptions() {
                 <>
                   {rx.uploaded && <Button size="sm" variant="destructive" onClick={() => remove(rx)}><Trash2 /> Delete</Button>}
                   <Button size="sm" disabled={!isPrescriptionValid(rx)} onClick={() => orderAll(rx)}>
-                    <ShoppingCart /> {isPrescriptionValid(rx) ? "Order in one click" : "Expired"}
+                    <ShoppingCart /> {ORDER_LABEL[prescriptionState(rx)]}
                   </Button>
                 </>
               )}
@@ -174,7 +181,7 @@ export function PatientPrescriptions() {
             <PrescriptionForm
               key={formKey}
               mode="upload"
-              onDone={() => { show("ok", "Prescription saved to your account."); setFormKey((k) => k + 1); }}
+              onDone={() => { show("ok", "Prescription uploaded. An admin will check it before Rx medicines unlock."); setFormKey((k) => k + 1); }}
             />
           </CardContent>
         </Card>
@@ -196,7 +203,7 @@ export function PatientOrders() {
     <>
       <PageHeader
         title="My orders"
-        description="Track every order from placement to delivery. Payment is cash on delivery."
+        description="Track every order from placement to delivery. Payment is simulated: cash on delivery, bKash or card."
         actions={<Link href="/medicines" className={buttonVariants()}><Pill /> Order medicine</Link>}
       />
       <div className="space-y-4">
@@ -210,6 +217,8 @@ export function PatientOrders() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-semibold">{o.id}</span>
                   <StatusBadge status={o.status} />
+                  <PaymentBadge payment={o.payment} />
+                  {o.refillId && <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">Auto refill</span>}
                   <span className="text-sm text-muted-foreground">{o.createdAt} · {pharmacy?.name ?? "Pharmacy"}{pharmacy ? `, ${pharmacy.city}` : ""}</span>
                   <span className="ml-auto font-semibold">{formatBDT(o.total)}</span>
                 </div>
@@ -262,7 +271,7 @@ export function PatientRefills() {
     e.preventDefault();
     if (!medicineId || !pharmacyId) return show("err", "Choose a medicine and a pharmacy.");
     setBusy(true);
-    const r = await done(run("POST", "/api/refills", { medicineId, pharmacyId, quantity: Number(quantity), everyDays: Number(everyDays) }), "Subscribed. We will remind you when a refill is due.");
+    const r = await done(run("POST", "/api/refills", { medicineId, pharmacyId, quantity: Number(quantity), everyDays: Number(everyDays) }), "Subscribed. We will remind you when a refill is due. Switch on auto-order to have it placed for you.");
     setBusy(false);
     if (r.ok) { setMedicineId(""); setPharmacyId(""); setQuantity("1"); setEveryDays("30"); }
   }
@@ -292,10 +301,24 @@ export function PatientRefills() {
                     {m && <span className="text-sm text-muted-foreground">{m.generic}</span>}
                     {due && <Badge>Due now</Badge>}
                     {!r.active && <Badge variant="outline">Paused</Badge>}
+                    {r.active && r.autoOrder && <Badge variant="secondary">Auto-order on</Badge>}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {r.quantity} pack{r.quantity > 1 ? "s" : ""} every {r.everyDays} days · {pharmacy?.name ?? "Pharmacy unavailable"} · next {r.active ? r.nextDate : "—"}
+                    {r.lastOrderId && ` · last automatic order ${r.lastOrderId}`}
                   </p>
+                  {r.lastError && (
+                    <p className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                      Automatic order on {r.lastRunAt} failed: {r.lastError} We will try again tomorrow.
+                    </p>
+                  )}
+                  <label className="flex w-fit items-center gap-2 text-xs">
+                    <input
+                      type="checkbox" className="size-4 accent-primary" checked={Boolean(r.autoOrder)} disabled={!r.active}
+                      onChange={(e) => done(run("PATCH", `/api/refills/${r.id}`, { autoOrder: e.target.checked }), e.target.checked ? "Auto-order on: the order is placed on the due date, cash on delivery." : "Auto-order off.")}
+                    />
+                    Place the order automatically on the due date (cash on delivery)
+                  </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       Packs
@@ -353,7 +376,7 @@ export function PatientRefills() {
           </CardContent>
         </Card>
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">Refills never order automatically. You confirm each order.</p>
+      <p className="mt-4 text-xs text-muted-foreground">Refills order automatically only when you switch auto-order on. Otherwise you confirm each order. Rx-only medicines are never ordered without a valid prescription.</p>
     </>
   );
 }

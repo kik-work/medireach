@@ -1,6 +1,7 @@
-import { MapPin, Star } from "lucide-react";
+import { MapPin, Navigation, Star } from "lucide-react";
 import { AddToCartButton } from "@/components/cart/add-to-cart-button";
 import { formatBDT } from "@/lib/constants";
+import { formatKm } from "@/lib/geo";
 import type { Availability } from "@/lib/services/pharmacy.service";
 import type { Medicine } from "@/lib/types";
 
@@ -8,12 +9,17 @@ export function AvailabilityList({ medicine, rows, emptyText }: { medicine: Medi
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{emptyText}</p>;
   return (
     <ul className="divide-y rounded-lg border">
-      {rows.map(({ pharmacy, stock }) => (
+      {rows.map(({ pharmacy, stock, distanceKm, exact }) => (
         <li key={pharmacy.id} className="flex flex-wrap items-center gap-3 p-3">
           <div className="min-w-0 flex-1">
             <p className="font-medium">{pharmacy.name}</p>
-            <p className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><MapPin className="size-3" />{pharmacy.area}, {pharmacy.city}</span>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><MapPin className="size-3" />{pharmacy.area ? `${pharmacy.area}, ` : ""}{pharmacy.city}</span>
+              {distanceKm !== undefined && (
+                <span className="flex items-center gap-1 font-medium text-foreground" title={exact ? undefined : "Approximate: distance to the city centre"}>
+                  <Navigation className="size-3" />{exact ? "" : "~"}{formatKm(distanceKm)} away
+                </span>
+              )}
               <span className="flex items-center gap-1"><Star className="size-3" />{pharmacy.rating}</span>
               <span>{stock.quantity} in stock</span>
             </p>

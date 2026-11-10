@@ -6,6 +6,7 @@ import { isMedicineLive } from "@/lib/rules";
 import { listPublicProfiles } from "./doctor.service";
 import { listAllMedicines, listPendingMedicines, listSubmittedBy } from "./medicine.service";
 import { listOrders } from "./order.service";
+import { runDueRefills } from "./refill.service";
 
 const toDash = (u: User, withContact: boolean): DashUser => ({
   id: u.id,
@@ -22,6 +23,8 @@ const consult = (doctorProfiles: DashboardData["doctorProfiles"], appointments: 
 
 /** Builds the data one signed-in user may see. Personal data of other users is never included. */
 export function getDashboardData(me: User): DashboardData {
+  // Place any automatic refill that fell due while the patient was away.
+  if (me.role === "patient") runDueRefills({ patientId: me.id });
   const appointments = me.role === "patient" || me.role === "doctor" ? listForUser(me) : [];
   const base = {
     me: toDash(me, true),

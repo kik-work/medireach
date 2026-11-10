@@ -102,22 +102,46 @@ function ChatPanel({ messages, meId, open, onSend }: { messages: ChatMessage[]; 
   );
 }
 
-function ReportsCard({ reports, isPatient, canAttach, hints, onAdd, onRemove }: {
-  reports: MedicalReport[]; isPatient: boolean; canAttach: boolean; hints: string[];
-  onAdd: (fileName: string, note: string) => Promise<string | null>; onRemove: (id: string) => Promise<void>;
+const MAX_REPORT_BYTES = 3 * 1024 * 1024;
+const REPORT_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
+function ReportsCard({ appointmentId, reports, isPatient, canAttach, hints, onAdd, onRemove }: {
+  appointmentId: string; reports: MedicalReport[]; isPatient: boolean; canAttach: boolean; hints: string[];
+  onAdd: (fileName: string, fileData: string, note: string) => Promise<string | null>; onRemove: (id: string) => Promise<void>;
 }) {
   const [fileName, setFileName] = useState("");
+  const [fileData, setFileData] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   // New key = empty file input after a successful upload.
   const [formKey, setFormKey] = useState(0);
 
+  /** Reads the chosen photo/PDF into a data URL; the server checks its type and size again. */
+  function pickFile(file: File | undefined) {
+    setFileName("");
+    setFileData("");
+    if (!file) return;
+    if (!REPORT_TYPES.includes(file.type)) return setError("Attach a JPEG, PNG, WebP photo or a PDF.");
+    if (file.size > MAX_REPORT_BYTES) return setError("The file is larger than 3 MB.");
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFileName(file.name);
+      setFileData(String(reader.result));
+    };
+    reader.onerror = () => setError("The file could not be read.");
+    reader.readAsDataURL(file);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!fileName) return setError("Choose a file first.");
-    const err = await onAdd(fileName, note);
+    if (!fileName || !fileData) return setError("Choose a file first.");
+    setBusy(true);
+    const err = await onAdd(fileName, fileData, note);
+    setBusy(false);
     setError(err);
-    if (!err) { setFileName(""); setNote(""); setFormKey((k) => k + 1); }
+    if (!err) { setFileName(""); setFileData(""); setNote(""); setFormKey((k) => k + 1); }
   }
 
   return (
@@ -132,7 +156,11 @@ function ReportsCard({ reports, isPatient, canAttach, hints, onAdd, onRemove }: 
               <li key={r.id} className="flex items-center gap-2 p-2.5">
                 <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{r.fileName}</span>
+                  {r.fileType ? (
+                    <a href={`/api/appointments/${appointmentId}/reports/${r.id}`} target="_blank" rel="noopener noreferrer" className="block truncate font-medium text-primary hover:underline">{r.fileName}</a>
+                  ) : (
+                    <span className="block truncate font-medium">{r.fileName}</span>
+                  )}
                   <span className="block truncate text-xs text-muted-foreground">{r.uploadedAt}{r.note ? ` · ${r.note}` : ""}</span>
                 </span>
                 {isPatient && canAttach && <Button size="icon-sm" variant="ghost" onClick={() => onRemove(r.id)} aria-label={`Remove ${r.fileName}`}><Trash2 /></Button>}
@@ -143,11 +171,11 @@ function ReportsCard({ reports, isPatient, canAttach, hints, onAdd, onRemove }: 
         {isPatient && canAttach && (
           <form key={formKey} onSubmit={submit} className="space-y-2" noValidate>
             {hints.length > 0 && <p className="text-xs text-muted-foreground">This doctor usually asks for: {hints.join(", ")}.</p>}
-            <Input type="file" accept="image/*,application/pdf" className="h-10 pt-1.5" aria-label="Report file" onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")} />
+            <Input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="h-10 pt-1.5" aria-label="Report file" onChange={(e) => pickFile(e.target.files?.[0])} />
             <Input className="h-9" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder="Note, e.g. done last week (optional)" aria-label="Note" />
             {error && <Notice kind="err">{error}</Notice>}
-            <Button type="submit" size="sm"><Paperclip /> Attach report</Button>
-            <p className="text-xs text-muted-foreground">Demo: the file name is saved. The file itself is not uploaded.</p>
+            <Button type="submit" size="sm" disabled={busy}><Paperclip /> {busy ? "Uploading…" : "Attach report"}</Button>
+            <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or PDF, up to 3 MB. Only you and your doctor can open it.</p>
           </form>
         )}
       </CardContent>
@@ -214,8 +242,8 @@ export function ConsultRoom({ id }: { id: string }) {
     return r.ok ? null : r.error;
   }
 
-  async function addReport(fileName: string, note: string) {
-    const r = await api("POST", `/api/appointments/${id}/reports`, { fileName, note });
+  async function addReport(fileName: string, fileData: string, note: string) {
+    const r = await api("POST", `/api/appointments/${id}/reports`, { fileName, fileData, note });
     if (r.ok) await load();
     return r.ok ? null : r.error;
   }
@@ -288,7 +316,7 @@ export function ConsultRoom({ id }: { id: string }) {
           </Card>
 
           <div className="space-y-6">
-            <ReportsCard reports={room.reports} isPatient={!isDoctor} canAttach={!closed} hints={hints} onAdd={addReport} onRemove={removeReport} />
+            <ReportsCard appointmentId={id} reports={room.reports} isPatient={!isDoctor} canAttach={!closed} hints={hints} onAdd={addReport} onRemove={removeReport} />
 
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><Pill className="size-4 text-primary" /> Prescription</CardTitle></CardHeader>

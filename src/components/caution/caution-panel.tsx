@@ -1,8 +1,9 @@
-import { AlertOctagon, Copy, Info, ShieldAlert, Sparkles } from "lucide-react";
+import { AlertOctagon, Copy, Info, ShieldAlert, Sparkles, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { CautionReport } from "@/lib/types";
+import type { CautionReport, ProfileSource } from "@/lib/types";
+import { CautionSummary } from "./caution-summary";
 
 const SEVERITY: Record<string, string> = {
   major: "border-red-300 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200",
@@ -10,12 +11,24 @@ const SEVERITY: Record<string, string> = {
   minor: "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200",
 };
 
+const SOURCE_LABEL: Record<ProfileSource, string> = {
+  prescription: "prescription",
+  refill: "refill",
+  order: "recent order",
+};
+
 /**
  * Presentational AI caution card. Data comes from the caution service
  * (retrieval from the curated database). Used on medicine pages and the cart.
+ * The optional plain-language summary on top is phrased from the same facts.
  */
 export function CautionPanel({ report, hideRx = false }: { report: CautionReport; hideRx?: boolean }) {
   const hasAlerts = report.duplicates.length > 0 || report.interactions.length > 0;
+  const profile = report.profile ?? [];
+  const fromProfile = new Set(profile.map((p) => p.brand));
+  const label = (brand: string) => (fromProfile.has(brand) ? `${brand} (on your profile)` : brand);
+  const checkedSeveral = report.items.length + profile.length > 1;
+
   return (
     <Card className="border-primary/30">
       <CardHeader>
@@ -25,27 +38,36 @@ export function CautionPanel({ report, hideRx = false }: { report: CautionReport
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
+        <CautionSummary medicineIds={report.items.map((i) => i.medicineId)} withProfile={report.profile !== undefined} />
+
         {report.duplicates.map((d) => (
           <div key={d.ingredient} className="flex gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
             <Copy className="mt-0.5 size-4 shrink-0" />
             <p>
-              <b>Duplicate ingredient:</b> {d.brands.join(" and ")} both contain <b className="capitalize">{d.ingredient}</b>. Taking them together can cause an overdose.
+              <b>Duplicate ingredient:</b> {d.brands.map(label).join(" and ")} both contain <b className="capitalize">{d.ingredient}</b>. Taking them together can cause an overdose.
             </p>
           </div>
         ))}
 
         {report.interactions.map((i) => (
-          <div key={i.pair.join("-")} className={cn("flex gap-3 rounded-lg border p-3", SEVERITY[i.severity])}>
+          <div key={`${i.pair.join("-")}:${i.brands.join("-")}`} className={cn("flex gap-3 rounded-lg border p-3", SEVERITY[i.severity])}>
             <AlertOctagon className="mt-0.5 size-4 shrink-0" />
             <p>
-              <b className="capitalize">{i.severity} interaction:</b> {i.brands[0]} + {i.brands[1]}. {i.message}
+              <b className="capitalize">{i.severity} interaction:</b> {label(i.brands[0])} + {label(i.brands[1])}. {i.message}
             </p>
           </div>
         ))}
 
-        {!hasAlerts && report.items.length > 1 && (
+        {!hasAlerts && checkedSeveral && (
           <p className="flex items-center gap-2 text-muted-foreground">
             <Info className="size-4" /> No duplicate ingredients or known interactions found in the curated database.
+          </p>
+        )}
+
+        {profile.length > 0 && (
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <UserRound className="mt-0.5 size-3.5 shrink-0" />
+            <span>Also checked against your profile: {profile.map((p) => `${p.brand} (${SOURCE_LABEL[p.source]})`).join(", ")}.</span>
           </p>
         )}
 

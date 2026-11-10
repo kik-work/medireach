@@ -1,6 +1,7 @@
 import { db, nextId, save } from "@/lib/data";
 import { freeSlots, isActive, isLive, type RoomData } from "@/lib/consult";
 import { today } from "@/lib/rules";
+import { parseDataUrl, removeUpload, writeUpload } from "@/lib/uploads";
 import type { Appointment, BusySlot, ChatMessage, ConsultMode, MedicalReport, User } from "@/lib/types";
 import { getProfile, listPublicProfiles } from "./doctor.service";
 
@@ -149,11 +150,14 @@ export function addMessage(a: Appointment, senderId: string, rawText: string): R
 
 export const listReports = (appointmentId: string) => db.reports.filter((r) => r.appointmentId === appointmentId);
 
-export function addReport(a: Appointment, input: { fileName?: string; note?: string }): Result<MedicalReport> {
+/** Stores the report file (photo or PDF, checked by its first bytes) in .data/uploads/<report id>. */
+export function addReport(a: Appointment, input: { fileName?: string; fileData?: unknown; note?: string }): Result<MedicalReport> {
   const fileName = (input.fileName ?? "").trim().slice(0, 120);
   if (!fileName) return fail("Attach a file.");
   if (a.status === "declined" || a.status === "cancelled") return fail("This appointment is closed.", 409);
   if (listReports(a.id).length >= MAX_REPORTS) return fail(`You can attach up to ${MAX_REPORTS} reports.`);
+  const file = parseDataUrl(input.fileData);
+  if (!file.ok) return fail(file.error);
   const report: MedicalReport = {
     id: nextId("rep-", db.reports.map((r) => r.id)),
     appointmentId: a.id,
@@ -162,6 +166,8 @@ export function addReport(a: Appointment, input: { fileName?: string; note?: str
     note: input.note?.trim().slice(0, 200) || undefined,
     uploadedAt: today(),
   };
+  if (!writeUpload(report.id, file.bytes)) return fail("The file could not be saved. Try again.", 500);
+  report.fileType = file.type;
   db.reports.push(report);
   save();
   return { ok: true, value: report };
@@ -170,8 +176,10 @@ export function addReport(a: Appointment, input: { fileName?: string; note?: str
 export function deleteReport(appointmentId: string, reportId: string) {
   const before = db.reports.length;
   db.reports = db.reports.filter((r) => !(r.id === reportId && r.appointmentId === appointmentId));
+  const removed = db.reports.length < before;
+  if (removed) removeUpload(reportId);
   save();
-  return db.reports.length < before;
+  return removed;
 }
 
 /** Everything the consultation room shows. `ordered` = the patient ordered a medicine from a linked prescription after it was issued. */

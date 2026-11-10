@@ -14,8 +14,20 @@ export function addDays(isoDate: string, days: number) {
 /** A medicine is live (listed, orderable, prescribable) once a verified doctor approved it. */
 export const isMedicineLive = (m: Pick<Medicine, "review">) => !m.review || m.review.status === "approved";
 
-export const isPrescriptionValid = (rx: Prescription) => rx.validUntil >= today();
+/** A doctor-issued prescription counts as soon as it exists; an uploaded copy only after an admin approved it. */
+export const isPrescriptionApproved = (rx: Pick<Prescription, "uploaded" | "review">) => !rx.uploaded || rx.review?.status === "approved";
 
-/** Medicine ids a patient may buy as Rx: items of their valid prescriptions (issued or uploaded). */
+export const isPrescriptionValid = (rx: Prescription) => isPrescriptionApproved(rx) && rx.validUntil >= today();
+
+export type PrescriptionState = "valid" | "expired" | "pending" | "rejected";
+
+/** What the prescription badges show. Review state comes first: an unreviewed copy is never "valid". */
+export function prescriptionState(rx: Prescription): PrescriptionState {
+  if (rx.uploaded && rx.review?.status === "rejected") return "rejected";
+  if (!isPrescriptionApproved(rx)) return "pending";
+  return rx.validUntil >= today() ? "valid" : "expired";
+}
+
+/** Medicine ids a patient may buy as Rx: items of their valid prescriptions (issued, or uploaded and approved). */
 export const prescribedMedicineIds = (prescriptions: Prescription[], patientId: string) =>
   prescriptions.filter((r) => r.patientId === patientId && isPrescriptionValid(r)).flatMap((r) => r.items.map((i) => i.medicineId));

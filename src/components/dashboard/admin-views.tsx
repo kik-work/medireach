@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { RxBadge, StatusBadge } from "@/components/shared/status-badge";
 import { useDashboardData } from "@/components/dashboard/data-provider";
-import { confirmAction, EmptyState, Notice, OrdersTable, selectClass, useFeedback } from "@/components/dashboard/shared";
+import { confirmAction, EmptyState, Notice, OrdersTable, RxFileLink, selectClass, useFeedback } from "@/components/dashboard/shared";
 import { Welcome } from "@/components/dashboard/welcome";
 import { CITIES, formatBDT } from "@/lib/constants";
 import { isMedicineLive } from "@/lib/rules";
@@ -39,7 +39,8 @@ export function AdminOverview() {
   const d = useDashboardData();
   const pendingPeople = d.users.filter((u) => u.role !== "patient" && u.status === "pending").length;
   const pendingPharmacies = d.pharmacies.filter((p) => p.status === "pending").length;
-  const pending = pendingPeople + pendingPharmacies;
+  const pendingRx = d.prescriptions.filter((r) => r.uploaded && r.review?.status === "pending").length;
+  const pending = pendingPeople + pendingPharmacies + pendingRx;
   const live = d.orders.filter((o) => o.status !== "cancelled");
   const liveMedicines = d.medicines.filter(isMedicineLive);
   const awaiting = d.medicines.filter((m) => m.review?.status === "pending");
@@ -64,7 +65,7 @@ export function AdminOverview() {
           <p>
             {pending === 0
               ? "Nothing is waiting for review."
-              : `${pendingPeople} doctor / pharmacist and ${pendingPharmacies} pharmacy registration${pending === 1 ? " is" : "s are"} waiting for review.`}
+              : `Waiting for review: ${pendingPeople} doctor / pharmacist, ${pendingPharmacies} pharmacy, ${pendingRx} uploaded prescription${pendingRx === 1 ? "" : "s"}.`}
           </p>
           <Link href="/admin/verifications" className={buttonVariants({ size: "sm" })}>Review</Link>
         </CardContent>
@@ -86,6 +87,67 @@ export function AdminOverview() {
         <OrdersTable orders={d.orders.slice(0, 4)} show={{ patient: true, pharmacy: true }} />
       </section>
     </div>
+  );
+}
+
+/** Patient-uploaded prescriptions. They unlock Rx medicines only after an admin compares the file with the listed medicines. */
+function UploadedPrescriptions() {
+  const d = useDashboardData();
+  const { done, node } = useFeedback();
+  const pending = d.prescriptions.filter((r) => r.uploaded && r.review?.status === "pending");
+  const name = (id: string) => d.users.find((u) => u.id === id)?.name ?? "Unknown patient";
+  const medicine = (id: string) => d.medicines.find((m) => m.id === id);
+
+  function decide(id: string, decision: "approve" | "reject") {
+    let note = "";
+    if (decision === "reject") {
+      note = window.prompt("Reason for the patient (for example: unreadable photo, no doctor signature):")?.trim() ?? "";
+      if (!note) return;
+    }
+    void done(d.run("POST", `/api/prescriptions/${id}/review`, { decision, note }), `${id} ${decision === "approve" ? "approved" : "rejected"}.`);
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 font-semibold">Uploaded prescriptions</h2>
+      <div className="space-y-3">
+        {node}
+        {pending.length === 0 ? (
+          <EmptyState>No uploaded prescription is waiting for review.</EmptyState>
+        ) : (
+          <Card>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>Prescription</TableHead><TableHead>Patient</TableHead><TableHead>Medicines listed</TableHead><TableHead>File</TableHead><TableHead className="text-right">Action</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pending.map((rx) => (
+                    <TableRow key={rx.id}>
+                      <TableCell className="font-medium">{rx.id}<div className="text-xs font-normal text-muted-foreground">{rx.doctorName || "Doctor not given"} · {rx.issuedAt}</div></TableCell>
+                      <TableCell>{name(rx.patientId)}</TableCell>
+                      <TableCell className="text-xs">
+                        {rx.items.map((i) => {
+                          const m = medicine(i.medicineId);
+                          return <div key={i.medicineId}>{m ? `${m.brand} ${m.strength}` : "Removed medicine"}{m?.rx ? " (Rx)" : ""} · {i.dose}</div>;
+                        })}
+                      </TableCell>
+                      <TableCell className="text-xs">{rx.fileType ? <RxFileLink rx={rx} /> : <span className="text-muted-foreground">No file stored</span>}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" disabled={!rx.fileType} onClick={() => decide(rx.id, "approve")}>Approve</Button>
+                          <Button size="sm" variant="destructive" onClick={() => decide(rx.id, "reject")}>Reject</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -165,6 +227,8 @@ export function AdminVerifications() {
             </Card>
           )}
         </section>
+
+        <UploadedPrescriptions />
 
         <section>
           <h2 className="mb-3 font-semibold">Patients</h2>

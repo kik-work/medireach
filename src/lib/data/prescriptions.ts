@@ -31,6 +31,7 @@ export const prescriptions: Prescription[] = [
   {
     id: "rx-1005", doctorId: "", patientId: "u-pat3", issuedAt: dayOffset(-5), validUntil: dayOffset(25),
     diagnosis: "Seasonal allergy", uploaded: true, fileName: "prescription-photo.jpg", doctorName: "Dr. A. Rahman",
+    review: { status: "approved", reviewedBy: "u-admin", reviewedAt: dayOffset(-4) },
     items: [{ medicineId: "m07", dose: "1 tablet at night", days: 10 }],
   },
 ];

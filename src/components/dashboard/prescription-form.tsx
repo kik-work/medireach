@@ -11,6 +11,8 @@ import { today, VALID_DAYS } from "@/lib/rules";
 import type { Prescription } from "@/lib/types";
 
 const MAX_ROWS = 10;
+const MAX_FILE_BYTES = 3 * 1024 * 1024;
+const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
 type Row = { medicineId: string; dose: string; days: string };
 const blank = (): Row => ({ medicineId: "", dose: "", days: "" });
@@ -39,6 +41,24 @@ export function PrescriptionForm(props: Props) {
   const [issuedAt, setIssuedAt] = useState(today());
   const [validUntil, setValidUntil] = useState(rx?.validUntil ?? "");
   const [fileName, setFileName] = useState("");
+  const [fileData, setFileData] = useState("");
+
+  /** Reads the chosen photo/PDF into a data URL; the server checks its type and size again. */
+  function pickFile(file: File | undefined) {
+    setFileName("");
+    setFileData("");
+    if (!file) return;
+    if (!ACCEPTED.includes(file.type)) return setError("Attach a JPEG, PNG, WebP photo or a PDF.");
+    if (file.size > MAX_FILE_BYTES) return setError("The file is larger than 3 MB.");
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFileName(file.name);
+      setFileData(String(reader.result));
+    };
+    reader.onerror = () => setError("The file could not be read.");
+    reader.readAsDataURL(file);
+  }
   const [rows, setRows] = useState<Row[]>(() =>
     rx ? rx.items.map((i) => ({ medicineId: i.medicineId, dose: i.dose, days: String(i.days) })) : [blank(), blank()],
   );
@@ -55,13 +75,13 @@ export function PrescriptionForm(props: Props) {
       .map((r) => ({ medicineId: r.medicineId, dose: r.dose.trim() || "As directed", days: Number(r.days) > 0 ? Number(r.days) : 5 }));
     if (props.mode === "issue" && !patientId) return setError("Choose a patient.");
     if (items.length === 0) return setError("Add at least one medicine.");
-    if (isUpload && !fileName) return setError("Attach a photo or PDF of the prescription.");
+    if (isUpload && !fileData) return setError("Attach a photo or PDF of the prescription.");
 
     setError(null);
     setBusy(true);
     const result = rx
       ? await run("PATCH", `/api/prescriptions/${rx.id}`, { diagnosis, items, validUntil })
-      : await run("POST", "/api/prescriptions", isUpload ? { diagnosis, items, issuedAt, fileName, doctorName } : { patientId, diagnosis, items, appointmentId: props.mode === "issue" ? props.appointmentId : undefined });
+      : await run("POST", "/api/prescriptions", isUpload ? { diagnosis, items, issuedAt, fileName, fileData, doctorName } : { patientId, diagnosis, items, appointmentId: props.mode === "issue" ? props.appointmentId : undefined });
     setBusy(false);
     if (!result.ok) return setError(result.error);
     props.onDone();
@@ -95,8 +115,8 @@ export function PrescriptionForm(props: Props) {
               <Input id="issuedAt" type="date" className="h-10" max={today()} value={issuedAt} onChange={(e) => setIssuedAt(e.target.value || today())} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="file">Photo or PDF</Label>
-              <Input id="file" type="file" accept="image/*,application/pdf" className="h-10 pt-1.5" onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")} />
+              <Label htmlFor="file">Photo or PDF (max 3 MB)</Label>
+              <Input id="file" type="file" accept={ACCEPTED.join(",")} className="h-10 pt-1.5" onChange={(e) => pickFile(e.target.files?.[0])} />
             </div>
           </>
         )}
@@ -130,7 +150,14 @@ export function PrescriptionForm(props: Props) {
         )}
       </div>
 
-      {!isEdit && <p className="text-xs text-muted-foreground">Valid for {VALID_DAYS} days from the prescription date. Rx-only medicines on it become purchasable for the patient.</p>}
+      {!isEdit && (
+        <p className="text-xs text-muted-foreground">
+          Valid for {VALID_DAYS} days from the prescription date.{" "}
+          {isUpload
+            ? "An admin checks the file first. Rx-only medicines on it unlock once it is approved."
+            : "Rx-only medicines on it become purchasable for the patient."}
+        </p>
+      )}
       {error && <Notice kind="err">{error}</Notice>}
       <div className="flex gap-2">
         <Button type="submit" className="h-10" disabled={busy}>

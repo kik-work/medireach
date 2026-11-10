@@ -75,7 +75,7 @@ const roadmap: { icon: LucideIcon; risk: string; plan: string; status: RoadmapSt
   { icon: Scale, risk: "Regulatory uncertainty", plan: "Study the DGDA online pharmacy SOP and design around it.", status: "next" },
   { icon: PackageCheck, risk: "Fake or expired stock", plan: "Batch numbers, expiry dates and admin audits. Admin verification of pharmacies exists today.", status: "partial" },
   { icon: QrCode, risk: "Prescription fraud", plan: "QR codes, mark-as-used after purchase, pharmacist review. Validity dates and Rx gating exist today.", status: "partial" },
-  { icon: CreditCard, risk: "Simulated payment and delivery", plan: "Sandbox integrations with bKash and SSLCommerz.", status: "next" },
+  { icon: CreditCard, risk: "Simulated payment and delivery", plan: "Sandbox integrations with bKash and SSLCommerz. A simulated cash, bKash and card checkout with refunds exists today.", status: "partial" },
   { icon: Database, risk: "Small medicine database", plan: "Source from official DGDA drug lists, reviewed by pharmacists.", status: "next" },
   { icon: Clock, risk: "Stale inventory", plan: "Last-updated timestamps, low-stock flags, pharmacy software sync. Pharmacists edit stock today.", status: "partial" },
   { icon: Snowflake, risk: "Cold-chain and delivery", plan: "Flag cold-chain medicines and limit delivery by type or region.", status: "next" },
@@ -117,12 +117,12 @@ export default function HomePage() {
   return (
     <div className="space-y-28 lg:space-y-40">
       {/* Hero */}
-      <section className="relative grid items-center gap-12 pt-4 md:grid-cols-2 lg:gap-20">
+      <section className="relative grid grid-cols-1 items-center gap-12 pt-4 md:grid-cols-2 lg:gap-20">
         <div className="pointer-events-none absolute -top-24 -left-24 -z-10 size-96 animate-blob rounded-full bg-primary/15 blur-3xl" />
         <div className="pointer-events-none absolute right-0 -bottom-10 -z-10 size-80 animate-blob rounded-full bg-violet-400/10 blur-3xl [animation-delay:-6s]" />
 
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
-          <Badge variant="outline" className="gap-1.5 py-3 pr-3 pl-2.5">
+          <Badge variant="outline" className="gap-1.5 py-3 pr-3 pl-2.5 max-sm:h-auto max-sm:py-1.5 max-sm:text-left max-sm:whitespace-normal">
             <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" /><span className="relative inline-flex size-2 rounded-full bg-primary" /></span>
             Prototype · The future of buying medicine in Bangladesh
           </Badge>

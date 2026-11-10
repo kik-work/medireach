@@ -8,10 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useDashboardData } from "@/components/dashboard/data-provider";
 import type { ApiResult } from "@/lib/api";
-import { formatBDT } from "@/lib/constants";
-import { isPrescriptionValid } from "@/lib/rules";
+import { formatBDT, PAYMENT_LABEL } from "@/lib/constants";
+import { prescriptionState, type PrescriptionState } from "@/lib/rules";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus, Prescription } from "@/lib/types";
+import type { Order, OrderStatus, Payment, Prescription } from "@/lib/types";
 
 export const selectClass = "h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm";
 
@@ -61,6 +61,24 @@ export function useFeedback() {
   return { done, show, clear: () => setMsg(null), node: msg ? <Notice kind={msg.kind}>{msg.text}</Notice> : null };
 }
 
+const RX_STATE: Record<PrescriptionState, { label: string; variant: "default" | "outline" | "secondary" | "destructive" }> = {
+  valid: { label: "Valid", variant: "default" },
+  expired: { label: "Expired", variant: "outline" },
+  pending: { label: "Waiting for admin review", variant: "secondary" },
+  rejected: { label: "Rejected", variant: "destructive" },
+};
+
+/** Link to the stored photo/PDF of an uploaded prescription (the server checks who may open it). */
+export function RxFileLink({ rx }: { rx: Prescription }) {
+  if (!rx.fileName) return null;
+  if (!rx.fileType) return <p className="flex items-center gap-1.5 text-muted-foreground"><Paperclip className="size-3.5" /> {rx.fileName}</p>;
+  return (
+    <a href={`/api/prescriptions/${rx.id}/file`} target="_blank" rel="noopener noreferrer" className="flex w-fit items-center gap-1.5 text-primary hover:underline">
+      <Paperclip className="size-3.5" /> {rx.fileName}
+    </a>
+  );
+}
+
 export function PrescriptionList({
   items,
   party,
@@ -77,7 +95,7 @@ export function PrescriptionList({
   return (
     <div className="space-y-4">
       {items.map((rx) => {
-        const valid = isPrescriptionValid(rx);
+        const state = RX_STATE[prescriptionState(rx)];
         const who = party === "doctor"
           ? `Patient: ${userName(rx.patientId)}`
           : rx.uploaded ? `Uploaded by you${rx.doctorName ? ` · ${rx.doctorName}` : ""}` : `By ${userName(rx.doctorId)}`;
@@ -86,14 +104,17 @@ export function PrescriptionList({
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center gap-2">
                 {rx.id}
-                <Badge variant={valid ? "default" : "outline"}>{valid ? "Valid" : "Expired"}</Badge>
+                <Badge variant={state.variant}>{state.label}</Badge>
                 {rx.uploaded && <Badge variant="secondary">Uploaded copy</Badge>}
                 <span className="ml-auto text-sm font-normal text-muted-foreground">{who} · {rx.issuedAt} → {rx.validUntil}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p className="text-muted-foreground">Diagnosis: {rx.diagnosis || "—"}</p>
-              {rx.fileName && <p className="flex items-center gap-1.5 text-muted-foreground"><Paperclip className="size-3.5" /> {rx.fileName}</p>}
+              <RxFileLink rx={rx} />
+              {rx.review?.status === "rejected" && rx.review.note && (
+                <Notice kind="err">Rejected by the admin: {rx.review.note}. Delete it and upload a clearer copy.</Notice>
+              )}
               <ul className="divide-y rounded-lg border">
                 {rx.items.map((i) => {
                   const m = medicine(i.medicineId);
@@ -137,6 +158,7 @@ export function OrdersTable({ orders, show = { pharmacy: true }, actions, note, 
               {show.pharmacy && <TableHead>Pharmacy</TableHead>}
               <TableHead>Items</TableHead>
               <TableHead>Total</TableHead>
+              <TableHead>Payment</TableHead>
               <TableHead>Status</TableHead>
               {actions && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
@@ -152,6 +174,7 @@ export function OrdersTable({ orders, show = { pharmacy: true }, actions, note, 
                   {note?.(o)}
                 </TableCell>
                 <TableCell>{formatBDT(o.total)}</TableCell>
+                <TableCell><PaymentBadge payment={o.payment} /></TableCell>
                 <TableCell><StatusBadge status={o.status} /></TableCell>
                 {actions && <TableCell className="text-right"><div className="flex flex-wrap justify-end gap-2">{actions(o)}</div></TableCell>}
               </TableRow>
@@ -160,6 +183,24 @@ export function OrdersTable({ orders, show = { pharmacy: true }, actions, note, 
         </Table>
       </CardContent>
     </Card>
+  );
+}
+
+const PAYMENT_TONE: Record<Payment["status"], string> = {
+  paid: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  unpaid: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  refunded: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+};
+
+/** Simulated payment state of an order. Orders saved before payments existed count as unpaid cash on delivery. */
+export function PaymentBadge({ payment }: { payment?: Payment }) {
+  const p = payment ?? { method: "cod" as const, status: "unpaid" as const };
+  const title = [p.ref && `Ref ${p.ref}`, p.account && `•••• ${p.account}`].filter(Boolean).join(" · ") || undefined;
+  return (
+    <span className="flex flex-col items-start gap-0.5" title={title}>
+      <Badge variant="secondary" className={cn("capitalize", PAYMENT_TONE[p.status])}>{p.status}</Badge>
+      <span className="text-[11px] text-muted-foreground">{PAYMENT_LABEL[p.method]}</span>
+    </span>
   );
 }
 

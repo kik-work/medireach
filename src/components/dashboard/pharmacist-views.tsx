@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clock, Package, PackageX, Pencil, Pill, Plus, Save, Send, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, LocateFixed, Package, PackageX, Pencil, Pill, Plus, Save, Send, Trash2, Wallet } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { RxBadge, StatusBadge } from "@/components/shared/status-badge";
 import { useDashboardData } from "@/components/dashboard/data-provider";
-import { confirmAction, EmptyState, Notice, OrdersTable, selectClass, useFeedback } from "@/components/dashboard/shared";
+import { confirmAction, EmptyState, Notice, OrdersTable, RxFileLink, selectClass, useFeedback } from "@/components/dashboard/shared";
 import { Welcome } from "@/components/dashboard/welcome";
 import { CITIES, formatBDT } from "@/lib/constants";
 import { isPrescriptionValid } from "@/lib/rules";
@@ -32,9 +32,13 @@ function usePharmacist() {
 function StatusNotice({ verified, userStatus, pharmacyStatus }: { verified: boolean; userStatus: string; pharmacyStatus?: string }) {
   if (verified) return null;
   const text =
-    userStatus !== "verified"
-      ? `Your pharmacist registration is ${userStatus}. You can prepare your inventory, but you cannot fulfil orders until an admin verifies you.`
-      : `Your pharmacy is ${pharmacyStatus ?? "not registered"}. It stays hidden from search and cannot receive orders until an admin verifies its licence.`;
+    userStatus === "pending" && pharmacyStatus === "verified"
+      ? "Your pharmacist registration is pending. Your pharmacy is already live, so you cannot change its stock or fulfil orders until an admin verifies you."
+      : userStatus === "pending"
+      ? "Your pharmacist registration is pending. You can prepare your inventory, but you cannot fulfil orders until an admin verifies you."
+      : userStatus !== "verified"
+      ? `Your pharmacist account is ${userStatus}. You cannot change stock or fulfil orders. Contact the MediReach admin team.`
+      :`Your pharmacy is ${pharmacyStatus ?? "not registered"}. It stays hidden from search and cannot receive orders until an admin verifies its licence.`;
   return (
     <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
       <Clock className="mt-0.5 size-4 shrink-0" />
@@ -196,7 +200,7 @@ export function PharmacistInventory() {
       <div className="space-y-4">
         <StatusNotice verified={d.verified} userStatus={d.me.status} pharmacyStatus={d.pharmacy.status} />
         {node}
-        <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-3">
             <Input className="h-10 max-w-sm" placeholder="Search your listings…" aria-label="Search inventory" value={query} onChange={(e) => setQuery(e.target.value)} />
             {rows.length === 0 ? (
@@ -334,9 +338,15 @@ export function PharmacistOrders() {
   function rxCheck(o: Order) {
     const rxLines = o.lines.map((l) => d.medicines.find((m) => m.id === l.medicineId)).filter((m) => m?.rx);
     if (rxLines.length === 0) return null;
-    const missing = rxLines.filter((m) => !d.prescriptions.some((r) => r.patientId === o.patientId && isPrescriptionValid(r) && r.items.some((i) => i.medicineId === m!.id)));
+    const covering = d.prescriptions.filter((r) => r.patientId === o.patientId && isPrescriptionValid(r));
+    const missing = rxLines.filter((m) => !covering.some((r) => r.items.some((i) => i.medicineId === m!.id)));
+    // Uploaded copies the pharmacist can open and compare with the medicine handed over.
+    const copies = covering.filter((r) => r.uploaded && r.items.some((i) => rxLines.some((m) => m!.id === i.medicineId)));
     return missing.length === 0 ? (
-      <p className="mt-1 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="size-3" /> Prescription verified</p>
+      <div className="mt-1 space-y-0.5 text-xs">
+        <p className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="size-3" /> Prescription verified</p>
+        {copies.map((r) => <RxFileLink key={r.id} rx={r} />)}
+      </div>
     ) : (
       <p className="mt-1 flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="size-3" /> No valid prescription: {missing.map((m) => m!.brand).join(", ")}</p>
     );
@@ -381,18 +391,40 @@ export function PharmacistOrders() {
 
 export function PharmacistProfile() {
   const d = usePharmacist();
-  const { done, node } = useFeedback();
+  const { done, show, node } = useFeedback();
   const p = d.pharmacy;
-  const [form, setForm] = useState(() => ({ name: p?.name ?? "", city: p?.city ?? "Dhaka", area: p?.area ?? "", address: p?.address ?? "", phone: p?.phone ?? "" }));
+  const [form, setForm] = useState(() => ({
+    name: p?.name ?? "", city: p?.city ?? "Dhaka", area: p?.area ?? "", address: p?.address ?? "", phone: p?.phone ?? "",
+    lat: p?.lat?.toString() ?? "", lng: p?.lng?.toString() ?? "",
+  }));
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
   if (!p) return <EmptyState>No pharmacy is linked to your account.</EmptyState>;
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  /** Fills the map position from the device. Meant to be used while standing in the pharmacy. */
+  function fillFromDevice() {
+    if (!("geolocation" in navigator)) return show("err", "Your browser cannot share its location.");
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLocating(false);
+        setForm((f) => ({ ...f, lat: coords.latitude.toFixed(6), lng: coords.longitude.toFixed(6) }));
+      },
+      () => { setLocating(false); show("err", "Could not read your location. Type the coordinates instead."); },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    const { lat, lng, ...details } = form;
+    const hasLat = lat.trim() !== "", hasLng = lng.trim() !== "";
+    if (hasLat !== hasLng) return show("err", "Enter both latitude and longitude, or leave both empty.");
     setBusy(true);
-    await done(d.run("PATCH", `/api/pharmacies/${p!.id}`, form), "Pharmacy details saved.");
+    const location = hasLat ? { lat: Number(lat), lng: Number(lng) } : { lat: null, lng: null };
+    await done(d.run("PATCH", `/api/pharmacies/${p!.id}`, { ...details, ...location }), "Pharmacy details saved.");
     setBusy(false);
   }
 
@@ -418,6 +450,15 @@ export function PharmacistProfile() {
               <div className="space-y-1.5"><Label htmlFor="ph-area">Area</Label><Input id="ph-area" className="h-10" value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="e.g. Dhanmondi" /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="ph-addr">Street address</Label><Input id="ph-addr" className="h-10" value={form.address} onChange={(e) => set("address", e.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="ph-phone">Phone</Label><Input id="ph-phone" className="h-10" value={form.phone} onChange={(e) => set("phone", e.target.value)} /></div>
+              <fieldset className="space-y-2 sm:col-span-2">
+                <legend className="text-sm font-medium">Map position</legend>
+                <p className="text-xs text-muted-foreground">Used for &ldquo;Near me&rdquo; search. Without it, customers see the distance to the city centre.</p>
+                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <Input aria-label="Latitude" className="h-10" inputMode="decimal" value={form.lat} onChange={(e) => set("lat", e.target.value)} placeholder="Latitude, e.g. 23.7461" />
+                  <Input aria-label="Longitude" className="h-10" inputMode="decimal" value={form.lng} onChange={(e) => set("lng", e.target.value)} placeholder="Longitude, e.g. 90.3742" />
+                  <Button type="button" variant="outline" className="h-10" onClick={fillFromDevice} disabled={locating}><LocateFixed /> {locating ? "Locating…" : "Use my location"}</Button>
+                </div>
+              </fieldset>
               <div className="sm:col-span-2"><Button type="submit" className="h-10" disabled={busy || !form.name.trim()}>{busy ? "Saving…" : "Save changes"}</Button></div>
             </form>
           </CardContent>

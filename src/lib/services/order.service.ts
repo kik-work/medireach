@@ -2,6 +2,7 @@ import { db, nextId, save } from "@/lib/data";
 import type { Order, OrderStatus, Role, User } from "@/lib/types";
 import { getMedicineById } from "./medicine.service";
 import { getPharmacy } from "./pharmacy.service";
+import { authorize, collectOnDelivery, refund, type PaymentInput, type PaymentResult } from "./payment.service";
 import { prescribedMedicineIds, today } from "./prescription.service";
 
 export interface CartLineInput {
@@ -19,12 +20,20 @@ export type PlaceOrderResult =
   | { ok: true; orders: Order[] }
   | { ok: false; error: string; blocked?: string[] };
 
+export interface PlaceOrderOptions {
+  /** Simulated payment. Default: cash on delivery. */
+  payment?: PaymentInput;
+  /** Set when a refill subscription places the order. */
+  refillId?: string;
+}
+
 /**
  * Places one order per pharmacy. Rx-only medicines are rejected unless the patient holds
  * a valid prescription for them (prescription bridge). A pharmacy that cannot cover every
  * line from stock gets a "pre-order" instead of a "placed" order.
+ * An online payment (bKash or card, simulated) is charged per order before anything is saved.
  */
-export function placeOrder(patientId: string, lines: CartLineInput[]): PlaceOrderResult {
+export function placeOrder(patientId: string, lines: CartLineInput[], opts: PlaceOrderOptions = {}): PlaceOrderResult {
   const clean = lines
     .map((l) => ({ ...l, quantity: Math.floor(Number(l.quantity)) }))
     .filter((l) => l.quantity > 0 && getMedicineById(l.medicineId));
@@ -38,6 +47,10 @@ export function placeOrder(patientId: string, lines: CartLineInput[]): PlaceOrde
   if (blocked.length) {
     return { ok: false, error: "A valid prescription is required for Rx-only medicines.", blocked };
   }
+
+  // Validate the payment once before any stock moves; each order then gets its own reference.
+  const check = authorize(opts.payment);
+  if (!check.ok) return { ok: false, error: check.error };
 
   const ids = db.orders.map((o) => o.id);
   const created: Order[] = [];
@@ -64,6 +77,8 @@ export function placeOrder(patientId: string, lines: CartLineInput[]): PlaceOrde
       status: inStock ? "placed" : "pre-order",
       createdAt: today(),
       reserved: inStock,
+      payment: (authorize(opts.payment) as Extract<PaymentResult, { ok: true }>).payment,
+      ...(opts.refillId && { refillId: opts.refillId }),
     };
     db.orders.unshift(order);
     created.push(order);
@@ -118,6 +133,8 @@ export function changeOrderStatus(id: string, next: OrderStatus, actor: Pick<Use
     }
     order.reserved = false;
   }
+  if (next === "cancelled") order.payment = refund(order.payment);
+  if (next === "delivered") order.payment = collectOnDelivery(order.payment);
   order.status = next;
   save();
   return { ok: true, order };

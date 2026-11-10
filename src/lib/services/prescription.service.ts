@@ -1,5 +1,6 @@
 import { db, nextId, save } from "@/lib/data";
-import type { Prescription, PrescriptionItem } from "@/lib/types";
+import { removeUpload } from "@/lib/uploads";
+import type { Prescription, PrescriptionItem, User } from "@/lib/types";
 
 import { addDays, isMedicineLive, isPrescriptionValid as isValid, today, VALID_DAYS } from "@/lib/rules";
 
@@ -46,6 +47,7 @@ export function createPrescription(input: {
   issuedAt?: string;
   uploaded?: boolean;
   fileName?: string;
+  fileType?: string;
   doctorName?: string;
   appointmentId?: string;
 }) {
@@ -59,7 +61,14 @@ export function createPrescription(input: {
     diagnosis: input.diagnosis.trim(),
     items: input.items,
     ...(input.appointmentId && { appointmentId: input.appointmentId }),
-    ...(input.uploaded && { uploaded: true, fileName: input.fileName || undefined, doctorName: input.doctorName?.trim() || undefined }),
+    // An uploaded copy waits for an admin before it unlocks Rx medicines.
+    ...(input.uploaded && {
+      uploaded: true,
+      fileName: input.fileName || undefined,
+      fileType: input.fileType || undefined,
+      doctorName: input.doctorName?.trim() || undefined,
+      review: { status: "pending" as const },
+    }),
   };
   db.prescriptions.unshift(rx);
   save();
@@ -80,5 +89,34 @@ export function deletePrescription(id: string) {
   const before = db.prescriptions.length;
   db.prescriptions = db.prescriptions.filter((r) => r.id !== id);
   save();
+  removeUpload(id);
   return db.prescriptions.length < before;
+}
+
+/** Uploaded copies an admin has not checked yet, oldest first. */
+export const listPendingUploads = () =>
+  db.prescriptions.filter((r) => r.uploaded && r.review?.status === "pending").sort((a, b) => a.id.localeCompare(b.id));
+
+export type RxReviewResult = { ok: true; value: Prescription } | { ok: false; error: string; status: number };
+
+/**
+ * An admin checks an uploaded copy against its file.
+ * Approve: its medicines become purchasable while it is in date. Reject: the patient sees the reason.
+ */
+export function reviewPrescription(id: string, admin: User, decision: unknown, note: unknown): RxReviewResult {
+  if (admin.role !== "admin") return { ok: false, error: "Only an admin can review uploaded prescriptions.", status: 403 };
+  const rx = getPrescription(id);
+  if (!rx || !rx.uploaded) return { ok: false, error: "Uploaded prescription not found.", status: 404 };
+  if (decision !== "approve" && decision !== "reject") return { ok: false, error: "Choose approve or reject.", status: 422 };
+  const reason = typeof note === "string" ? note.trim().slice(0, 300) : "";
+  if (decision === "reject" && !reason) return { ok: false, error: "Give the patient a reason for the rejection.", status: 422 };
+  if (decision === "approve" && !rx.fileType) return { ok: false, error: "No file is stored, so there is nothing to check. Reject it instead.", status: 422 };
+  rx.review = {
+    status: decision === "approve" ? "approved" : "rejected",
+    reviewedBy: admin.id,
+    reviewedAt: today(),
+    note: reason || undefined,
+  };
+  save();
+  return { ok: true, value: rx };
 }

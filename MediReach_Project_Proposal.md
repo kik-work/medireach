@@ -128,13 +128,15 @@ Every AI response ends with: *"This is general information. Follow your doctor's
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **Backend / API** | Laravel (PHP) | Mature, secure, excellent for role-based auth, REST APIs, and rapid development |
-| **Frontend** | Next.js (React) | Server-side rendering, fast routing, strong ecosystem, SEO-friendly |
+| **Frontend** | Next.js (React, TypeScript) | Server-side rendering, fast routing, strong ecosystem, SEO-friendly |
+| **Backend / API** | Next.js route handlers + a service layer (TypeScript) | One language end to end; role-based auth and a REST API in the same codebase; services testable on their own |
 | **Styling** | Tailwind CSS | Utility-first, fast, consistent design |
 | **UI Components** | shadcn/ui | Accessible, modern, customisable components |
-| **Database** | MySQL | Reliable relational database, strong fit for structured medicine, order, and user data |
+| **Data store (prototype)** | JSON file store | Runs with no database server, so the prototype is easy to install and reset for demonstration |
+| **AI phrasing (optional)** | Claude API | Rephrases retrieved caution facts in plain language; off unless configured |
+| **Testing** | Vitest | Unit tests for the safety rules (Rx gating, cautions, orders, payment, refills) |
 
-Architecture: Laravel serves as a REST API and business/authentication layer; Next.js consumes that API and renders the interface; MySQL stores all persistent data. This decoupled (headless) design keeps frontend and backend independent and maintainable.
+Architecture: the browser calls a REST API under `/api`. Each route handler checks the signed-in role and calls a service, which holds the business rules and reads and writes the data store. The layering is the same as the originally planned Laravel + MySQL design: route handlers map to controller actions and each data collection maps to a relational table (see the ER diagram). A production deployment would move the data store to MySQL (or PostgreSQL), and could move the API layer to Laravel without changing the REST paths the interface uses; this is listed as future work.
 
 ---
 
@@ -143,7 +145,7 @@ Architecture: Laravel serves as a REST API and business/authentication layer; Ne
 The project follows an **iterative, incremental (Agile-style) approach**:
 
 1. Requirement analysis and system design (ER diagram, use cases, wireframes)
-2. Database and Laravel API setup with authentication and roles
+2. Data model and REST API setup with authentication and roles
 3. Core marketplace and medicine catalogue
 4. Prescription bridge and ordering
 5. AI caution layer over the curated database
@@ -180,6 +182,7 @@ Each module is built, tested, and reviewed before the next begins.
 - Real payment gateway and delivery-logistics integration
 - Expansion of the medicine database toward national coverage
 - Stronger clinical-safety tooling and pharmacist review workflows
+- Production data store (MySQL or PostgreSQL), and optionally a separate Laravel API, behind the same REST interface
 - Mobile application
 
 ---
@@ -189,7 +192,7 @@ Each module is built, tested, and reviewed before the next begins.
 | Weeks | Phase |
 |-------|-------|
 | 1–2 | Requirement analysis, system design, database design |
-| 3–4 | Laravel API, authentication, and role setup |
+| 3–4 | REST API, authentication, and role setup |
 | 5–6 | Marketplace, medicine catalogue, and search |
 | 7–8 | Prescription bridge and ordering |
 | 9–10 | AI caution layer and admin dashboards |
@@ -200,7 +203,7 @@ Each module is built, tested, and reviewed before the next begins.
 
 ## 16. Conclusion
 
-MediReach is a forward-looking academic prototype that designs the digital future of medicine access in Bangladesh: making rare medicines reachable, linking doctors' prescriptions to purchases, and adding an AI layer that informs and cautions without ever overriding a doctor. It combines a genuine social problem with a clear, safe, and technically sound design — built on Laravel, Next.js, Tailwind, shadcn/ui, and MySQL.
+MediReach is a forward-looking academic prototype that designs the digital future of medicine access in Bangladesh: making rare medicines reachable, linking doctors' prescriptions to purchases, and adding an AI layer that informs and cautions without ever overriding a doctor. It combines a genuine social problem with a clear, safe, and technically sound design — built on Next.js, TypeScript, Tailwind, and shadcn/ui, with a layered API ready to move to a production database.
 
 ---
 

@@ -44,10 +44,14 @@ const seed = () => ({
 
 export type Db = ReturnType<typeof seed>;
 
+// Hashing is slow (scrypt), so the seed accounts are hashed once per process and copied.
+let seededAccounts: Account[] | undefined;
 const seedAccounts = () =>
-  users.map<Account>((u) => ({ userId: u.id, passwordHash: hashPassword(seedPasswords[u.id] ?? "changeme") }));
+  structuredClone((seededAccounts ??= users.map<Account>((u) => ({ userId: u.id, passwordHash: hashPassword(seedPasswords[u.id] ?? "changeme") }))));
 
-const FILE = path.join(process.cwd(), ".data", "db.json");
+/** Data folder. MEDIREACH_DATA_DIR moves it, e.g. the tests use a temporary folder. */
+export const DATA_DIR = process.env.MEDIREACH_DATA_DIR ?? path.join(process.cwd(), ".data");
+const FILE = path.join(DATA_DIR, "db.json");
 
 function load(): Db {
   try {
@@ -59,6 +63,16 @@ function load(): Db {
       if (u.role !== "doctor" || merged.users.some((x) => x.id === u.id)) continue;
       merged.users.push(structuredClone(u));
       merged.accounts.push({ userId: u.id, passwordHash: hashPassword(seedPasswords[u.id] ?? "changeme") });
+    }
+    // Seeded pharmacies saved before map positions existed get theirs.
+    for (const p of merged.pharmacies) {
+      const s = pharmacies.find((x) => x.id === p.id);
+      if (s && p.lat === undefined && p.lng === undefined) Object.assign(p, { lat: s.lat, lng: s.lng });
+    }
+    // Uploaded copies saved before admin review existed: the seeded one keeps its approval, others wait for review.
+    for (const r of merged.prescriptions) {
+      if (!r.uploaded || r.review) continue;
+      r.review = structuredClone(prescriptions.find((x) => x.id === r.id && x.review)?.review) ?? { status: "pending" };
     }
     return merged;
   } catch {
@@ -84,6 +98,13 @@ export const db: Db = (g.__medireachDb ??= load());
 
 /** Persist the current state of `db`. Call after every mutation. */
 export const save = () => write(db);
+
+/** Replaces every collection with fresh sample data and saves it. Used by the tests. */
+export function resetDb() {
+  const fresh: Db = { ...seed(), accounts: seedAccounts() };
+  for (const key of Object.keys(fresh) as (keyof Db)[]) (db as Record<keyof Db, unknown>)[key] = fresh[key];
+  save();
+}
 
 /** Next id like "m16": highest numeric suffix + 1, so deleted ids are never reused. */
 export function nextId(prefix: string, ids: string[]) {

@@ -13,5 +13,6 @@ export function getPlatformStats() {
     revenue: db.orders.filter((o) => o.status !== "cancelled").reduce((s, o) => s + o.total, 0),
     pendingVerifications:
       db.users.filter((u) => u.status === "pending").length + db.pharmacies.filter((p) => p.status === "pending").length,
+    prescriptionsAwaitingReview: db.prescriptions.filter((r) => r.uploaded && r.review?.status === "pending").length,
   };
 }

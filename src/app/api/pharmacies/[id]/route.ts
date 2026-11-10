@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { guard, readJson } from "@/lib/auth";
 import { CITIES } from "@/lib/constants";
-import { getPharmacy, setPharmacyStatus, updatePharmacy, type PharmacyInput } from "@/lib/services/pharmacy.service";
+import { checkLocation, getPharmacy, setPharmacyStatus, updatePharmacy, type LocationPatch, type PharmacyInput } from "@/lib/services/pharmacy.service";
 import type { City, VerificationStatus } from "@/lib/types";
 
 const STATUSES: VerificationStatus[] = ["pending", "verified", "rejected", "suspended"];
 
 /**
- * PATCH /api/pharmacies/:id { name?, city?, area?, address?, phone?, licenseNo?, status? }
+ * PATCH /api/pharmacies/:id { name?, city?, area?, address?, phone?, licenseNo?, lat?, lng?, status? }
+ * lat/lng: the map position used for "near me" search (both numbers, or both null to clear).
  * pharmacist: edits the details/location of their own pharmacy · admin: edits any and sets the verification status.
  */
 export async function PATCH(req: Request, ctx: RouteContext<"/api/pharmacies/[id]">) {
@@ -17,12 +18,14 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/pharmacies/[id
   if (!pharmacy) return NextResponse.json({ error: "Pharmacy not found." }, { status: 404 });
   if (user.role === "pharmacist" && user.pharmacyId !== pharmacy.id) return NextResponse.json({ error: "Not your pharmacy." }, { status: 403 });
 
-  const body = await readJson<Partial<PharmacyInput> & { status?: VerificationStatus }>(req);
+  const body = await readJson<Partial<PharmacyInput> & LocationPatch & { status?: VerificationStatus }>(req);
   if (body.city && !CITIES.includes(body.city as City)) return NextResponse.json({ error: "Unknown city." }, { status: 422 });
+  const location = checkLocation(body);
+  if (!location.ok) return NextResponse.json({ error: location.error }, { status: 422 });
   if (body.status !== undefined) {
     if (user.role !== "admin") return NextResponse.json({ error: "Only an admin can change verification." }, { status: 403 });
     if (!STATUSES.includes(body.status)) return NextResponse.json({ error: "Invalid status." }, { status: 422 });
     setPharmacyStatus(pharmacy.id, body.status);
   }
-  return NextResponse.json({ data: updatePharmacy(pharmacy.id, body) });
+  return NextResponse.json({ data: updatePharmacy(pharmacy.id, body, location.value) });
 }

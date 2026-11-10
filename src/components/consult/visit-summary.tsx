@@ -53,7 +53,7 @@ export function VisitSummary({ appointment }: { appointment: Appointment }) {
                 <li key={r.id} className="flex items-center gap-2 p-2">
                   <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{r.fileName}</span>
+                    {r.fileType ? <a href={`/api/appointments/${r.appointmentId}/reports/${r.id}`} target="_blank" rel="noopener noreferrer" className="block truncate font-medium text-primary hover:underline">{r.fileName}</a> : <span className="block truncate font-medium">{r.fileName}</span>}
                     <span className="block truncate text-xs text-muted-foreground">{r.uploadedAt}{r.note ? ` · ${r.note}` : ""}</span>
                   </span>
                 </li>

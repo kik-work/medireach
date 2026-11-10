@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { guard, readJson } from "@/lib/auth";
 import { db } from "@/lib/data";
 import { getAppointment } from "@/lib/services/appointment.service";
-import { cleanItems, createPrescription, listForDoctor, listForPatient } from "@/lib/services/prescription.service";
+import { cleanItems, createPrescription, deletePrescription, listForDoctor, listForPatient } from "@/lib/services/prescription.service";
+import { parseDataUrl, writeUpload } from "@/lib/uploads";
 
 /** GET /api/prescriptions — prescriptions of the signed-in patient (issued + uploaded) or doctor (issued). */
 export async function GET() {
@@ -18,6 +19,8 @@ interface Body {
   items?: unknown;
   issuedAt?: string;
   fileName?: string;
+  /** Patient upload: the photo or PDF as a data URL ("data:image/jpeg;base64,…"). */
+  fileData?: string;
   doctorName?: string;
   appointmentId?: string;
 }
@@ -25,7 +28,8 @@ interface Body {
 /**
  * POST /api/prescriptions
  * - doctor (verified): issues a prescription to a verified patient
- * - patient: saves an uploaded copy of a paper prescription for themselves
+ * - patient: uploads a photo/PDF of a paper prescription. It stays "pending" and unlocks
+ *   Rx medicines only after an admin approves it (POST /api/prescriptions/:id/review).
  */
 export async function POST(req: Request) {
   const { user, res } = await guard("patient", "doctor");
@@ -47,7 +51,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ data: rx }, { status: 201 });
   }
 
-  if (!body.fileName) return NextResponse.json({ error: "Attach a photo or PDF of the prescription." }, { status: 422 });
+  if (user.status !== "verified") return NextResponse.json({ error: "Your account is suspended." }, { status: 403 });
+  const file = parseDataUrl(body.fileData);
+  if (!file.ok) return NextResponse.json({ error: file.error }, { status: 422 });
   const rx = createPrescription({
     doctorId: "",
     patientId: user.id,
@@ -55,8 +61,13 @@ export async function POST(req: Request) {
     items,
     issuedAt: body.issuedAt,
     uploaded: true,
-    fileName: String(body.fileName),
-    doctorName: body.doctorName,
+    fileName: String(body.fileName ?? "prescription").replace(/[^\w .()-]/g, "_").slice(0, 120),
+    fileType: file.type,
+    doctorName: typeof body.doctorName === "string" ? body.doctorName.slice(0, 120) : undefined,
   });
+  if (!writeUpload(rx.id, file.bytes)) {
+    deletePrescription(rx.id);
+    return NextResponse.json({ error: "The file could not be stored. Try again later." }, { status: 500 });
+  }
   return NextResponse.json({ data: rx }, { status: 201 });
 }
